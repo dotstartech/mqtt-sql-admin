@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT SQL Admin</title>
+    <link rel="stylesheet" href="/admin/styles.css">
+    <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>MQTT SQL Admin</h1>
+        </header>
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('database')">Database</button>
+            <button class="tab" onclick="switchTab('broker')">Broker</button>
+            <button class="tab" onclick="switchTab('acl')">ACL</button>
+        </div>
+        <div id="database-tab" class="tab-content active">
+        <div class="controls">
+            <div class="controls-left">
+                <div class="db-status">
+                    <span class="status-text" id="dbStatus">Connecting...</span>
+                    <span class="status-indicator" id="dbStatusIcon">⏳</span>
+                </div>
+                <div class="control-group">
+                    <label for="topicFilter">Topic Filter</label>
+                    <input type="text" id="topicFilter" placeholder="data/test/%">
+                </div>
+                <div class="control-group">
+                    <label for="timeFilter">Time Range</label>
+                    <select id="timeFilter">
+                        <option value="all">All Time</option>
+                        <option value="1">24 Hours</option>
+                        <option value="2" selected>2 Days</option>
+                        <option value="3">3 Days</option>
+                        <option value="5">5 Days</option>
+                        <option value="7">7 Days</option>
+                        <option value="30">30 Days</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="limit">Limit</label>
+                    <select id="limit">
+                        <option value="10">10</option>
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="500">500</option>
+                        <option value="1000">1000</option>
+                    </select>
+                </div>
+                <button onclick="loadMessages()">🔍 Apply</button>
+                <button onclick="clearFilter()">🗑️ Clear</button>
+                <button id="autoRefreshBtn" onclick="toggleAutoRefresh()">⏸️ Auto-Refresh</button>
+                <div class="separator"></div>
+                <div class="control-group flex-grow">
+                    <label for="customQuery">Custom Query</label>
+                    <input type="text" id="customQuery" placeholder="SELECT topic, payload, ulid FROM msg WHERE ...">
+                </div>
+                <button id="executeBtn" onclick="executeCustomQuery()">▶️ Execute</button>
+            </div>
+        </div>
+        <div class="content">
+            <div id="message"></div>
+            <div id="results"></div>
+        </div>
+    </div>
+    <div id="acl-tab" class="tab-content">
+        <div class="content">
+            <div class="broker-section">
+                <div id="broker-summary"></div>
+            </div>
+            <div class="broker-section">
+                <h3>📋 Clients</h3>
+                <div class="broker-content">
+                    <table class="acl-table" id="clients-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Display Name</th>
+                                <th>Roles</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="broker-section">
+                <h3>🔐 Roles & ACLs</h3>
+                <div class="broker-content">
+                    <table class="acl-table" id="roles-table">
+                        <thead>
+                            <tr>
+                                <th>Role Name</th>
+                                <th>ACL Count</th>
+                                <th>ACLs</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="broker-section">
+                <h3>⚙️ Default ACL Access</h3>
+                <div class="broker-content">
+                    <div id="default-acl"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="broker-tab" class="tab-content">
+        <div class="controls">
+            <div class="controls-left">
+                <div class="db-status" id="mqttStatus">
+                    <span class="status-text">Connecting...</span>
+                    <span class="status-indicator">⚫</span>
+                </div>
+                <div class="control-group">
+                    <label for="brokerTopicFilter">Topic Filter</label>
+                    <input type="text" id="brokerTopicFilter" placeholder="Filter messages by topic">
+                </div>
+                <div class="control-group">
+                    <label for="brokerTimeFilter">Time Range</label>
+                    <select id="brokerTimeFilter">
+                        <option value="all">All Time</option>
+                        <option value="5">5 Minutes</option>
+                        <option value="15">15 Minutes</option>
+                        <option value="30">30 Minutes</option>
+                        <option value="60">1 Hour</option>
+                        <option value="180" selected>3 Hours</option>
+                        <option value="360">6 Hours</option>
+                        <option value="1440">1 Day</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="brokerLimit">Limit</label>
+                    <select id="brokerLimit">
+                        <option value="10">10</option>
+                        <option value="25" selected>25</option>
+                        <option value="50" >50</option>
+                        <option value="100">100</option>
+                        <option value="500">500</option>
+                        <option value="1000">1000</option>
+                    </select>
+                </div>
+                <button id="applyFilterBtn">🔍 Apply</button>
+                <button onclick="clearMqttMessages()">🗑️ Clear</button>
+            </div>
+        </div>
+        <div class="content">
+            <div id="results">
+                <table id="mqtt-messages-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Topic</th>
+                            <th>Payload</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <script>
+        // Use relative URL - served from same origin via Nginx, no CORS issues
+        const API_BASE = '/db-admin';
+        let autoRefreshInterval = null;
+        let isAutoRefreshEnabled = true;
+        let lastQueryResult = null;
+
+        // ULID timestamp extraction
+        // ULID format: first 10 characters encode timestamp in milliseconds since Unix epoch
+        function extractTimestampFromULID(ulid) {
+            if (!ulid || ulid.length < 10) {
+                return 'Invalid ULID';
+            }
+            
+            // Crockford's Base32 alphabet used in ULID
+            const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+            
+            try {
+                // Extract first 10 characters (timestamp portion)
+                const timestampPart = ulid.substring(0, 10).toUpperCase();
+                
+                // Decode from Base32 to get milliseconds
+                let timestamp = 0;
+                for (let i = 0; i < timestampPart.length; i++) {
+                    const char = timestampPart[i];
+                    const value = ENCODING.indexOf(char);
+                    if (value === -1) {
+                        return 'Invalid ULID';
+                    }
+                    timestamp = timestamp * 32 + value;
+                }
+                
+                // Convert milliseconds to JavaScript Date
+                const date = new Date(timestamp);
+                
+                // Format as YYYY-MM-DD HH:MM:SS.mmm
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+                
+                return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+            } catch (error) {
+                console.error('Error extracting timestamp from ULID:', error);
+                return 'Error';
+            }
+        }
+
+        async function executeSQL(sql) {
+            try {
+                const response = await fetch(`${API_BASE}/v1/execute`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        stmt: [sql]
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (data.code) {
+                    throw new Error(data.message || 'SQL execution error');
+                }
+
+                return data;
+            } catch (error) {
+                console.error('SQL execution error:', error);
+                throw error;
+            }
+        }
+
+        async function loadStats() {
+            try {
+                // Simple query to test database connectivity
+                const result = await executeSQL(`SELECT COUNT(*) FROM msg LIMIT 1`);
+                if (result.result) {
+                    document.getElementById('dbStatus').textContent = 'Connected';
+                    document.getElementById('dbStatusIcon').textContent = '🟢';
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                document.getElementById('dbStatus').textContent = 'Error';
+                document.getElementById('dbStatusIcon').textContent = '🔴';
+            }
+        }
+
+        async function loadMessages() {
+            // Clear custom query field to indicate we're using filters now
+            document.getElementById('customQuery').value = '';
+            
+            const topicFilter = document.getElementById('topicFilter').value.trim();
+            const timeFilter = document.getElementById('timeFilter').value;
+            const limit = document.getElementById('limit').value;
+            
+            // Select only the essential columns: topic, payload, ulid (headers contains ulid)
+            let sql = `SELECT topic, payload, ulid FROM msg`;
+            
+            let whereConditions = [];
+            
+            // Add topic filter
+            if (topicFilter) {
+                if (topicFilter.includes('%')) {
+                    whereConditions.push(`topic LIKE '${topicFilter}'`);
+                } else {
+                    whereConditions.push(`topic = '${topicFilter}'`);
+                }
+            }
+            
+            // Add time filter (timestamp is in seconds, not milliseconds)
+            if (timeFilter !== 'all') {
+                const days = parseInt(timeFilter);
+                const cutoffTimestamp = Math.floor(Date.now() / 1000) - (days * 24 * 60 * 60);
+                whereConditions.push(`timestamp >= ${cutoffTimestamp}`);
+            }
+            
+            // Combine WHERE conditions with AND
+            if (whereConditions.length > 0) {
+                sql += ` WHERE ` + whereConditions.join(' AND ');
+            }
+            sql += ` ORDER BY timestamp DESC LIMIT ${limit}`;
+
+            // Only show loading on first load or manual refresh (not during auto-refresh)
+            if (!lastQueryResult) {
+                showLoading();
+            }
+            
+            try {
+                const result = await executeSQL(sql);
+                
+                // Compare with last result to avoid unnecessary updates
+                if (hasResultChanged(result)) {
+                    displayResults(result);
+                    lastQueryResult = result;
+                }
+                // showMessage('Query executed successfully!', 'success');
+            } catch (error) {
+                showMessage(`Error: ${error.message}`, 'error');
+                document.getElementById('results').innerHTML = '';
+                lastQueryResult = null;
+            }
+        }
+
+        async function executeCustomQuery() {
+            const query = document.getElementById('customQuery').value.trim();
+            if (!query) {
+                showMessage('Please enter a SQL query', 'error');
+                return;
+            }
+
+            // Turn off auto-refresh if it's currently enabled
+            if (isAutoRefreshEnabled) {
+                toggleAutoRefresh();
+            }
+
+            // Reset last result since we're running a different query
+            lastQueryResult = null;
+
+            showLoading();
+            
+            try {
+                const result = await executeSQL(query);
+                displayResults(result);
+                // showMessage('Custom query executed successfully!', 'success');
+            } catch (error) {
+                showMessage(`Error: ${error.message}`, 'error');
+                document.getElementById('results').innerHTML = '';
+            }
+        }
+
+        function hasResultChanged(newResult) {
+            // If no previous result, consider it changed
+            if (!lastQueryResult) {
+                return true;
+            }
+            
+            // Quick check: compare JSON stringified versions
+            // This is efficient and catches all differences in structure and data
+            try {
+                const oldJson = JSON.stringify(lastQueryResult);
+                const newJson = JSON.stringify(newResult);
+                return oldJson !== newJson;
+            } catch (error) {
+                // If comparison fails, assume changed to be safe
+                console.error('Error comparing results:', error);
+                return true;
+            }
+        }
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            if (!data.result) {
+                resultsDiv.innerHTML = '<div class="no-results">No results returned</div>';
+                return;
+            }
+
+            const result = data.result;
+            if (!result.rows || result.rows.length === 0) {
+                resultsDiv.innerHTML = '<div class="no-results">No messages found</div>';
+                return;
+            }
+
+            // Create a map of column indices (case-insensitive)
+            const colMap = {};
+            result.cols.forEach((col, index) => {
+                colMap[col.name.toLowerCase()] = index;
+            });
+
+            // Standard 4-column table header
+            let html = '<table><thead><tr>';
+            html += '<th>Timestamp</th>';
+            html += '<th>Topic</th>';
+            html += '<th>Payload</th>';
+            html += '<th>Headers</th>';
+            html += '</tr></thead><tbody>';
+            
+            // Build rows with standard 4-column format
+            result.rows.forEach(row => {
+                html += '<tr>';
+                
+                // Column 1: Timestamp (extracted from ULID)
+                const ulidIndex = colMap['ulid'];
+                const ulid = ulidIndex !== undefined ? row[ulidIndex].value : null;
+                const timestamp = ulid ? extractTimestampFromULID(ulid) : 'N/A';
+                html += `<td class="timestamp">${timestamp}</td>`;
+                
+                // Column 2: Topic
+                const topicIndex = colMap['topic'];
+                const topic = topicIndex !== undefined ? row[topicIndex].value : 'N/A';
+                html += `<td class="topic">${topic !== null && topic !== undefined ? topic : 'NULL'}</td>`;
+                
+                // Column 3: Payload
+                const payloadIndex = colMap['payload'];
+                const payload = payloadIndex !== undefined ? row[payloadIndex].value : 'N/A';
+                html += `<td class="payload">${payload !== null && payload !== undefined ? payload : 'NULL'}</td>`;
+                
+                // Column 4: Headers (ULID)
+                html += `<td class="ulid">${ulid !== null && ulid !== undefined ? ulid : 'NULL'}</td>`;
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            resultsDiv.innerHTML = html;
+        }
+
+        function showLoading() {
+            document.getElementById('results').innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading...</p>
+                </div>
+            `;
+        }
+
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.className = type;
+            messageDiv.textContent = text;
+            messageDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                messageDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function clearFilter() {
+            document.getElementById('topicFilter').value = '';
+            document.getElementById('timeFilter').value = '7';
+            document.getElementById('customQuery').value = '';
+            lastQueryResult = null; // Reset comparison cache
+            loadMessages();
+        }
+
+        function toggleAutoRefresh() {
+            isAutoRefreshEnabled = !isAutoRefreshEnabled;
+            const btn = document.getElementById('autoRefreshBtn');
+            const customQueryField = document.getElementById('customQuery');
+            const executeBtn = document.getElementById('executeBtn');
+            
+            if (isAutoRefreshEnabled) {
+                // Clear custom query field when enabling auto-refresh
+                customQueryField.value = '';
+                
+                // Disable custom query controls
+                customQueryField.disabled = true;
+                executeBtn.disabled = true;
+                
+                btn.textContent = '⏸️ Auto-Refresh';
+                btn.classList.add('btn-active');
+                
+                // Immediately load messages before starting the interval
+                loadMessages();
+                
+                startAutoRefresh();
+            } else {
+                // Enable custom query controls
+                customQueryField.disabled = false;
+                executeBtn.disabled = false;
+                
+                btn.textContent = '▶️ Auto-Refresh';
+                btn.classList.remove('btn-active');
+                stopAutoRefresh();
+            }
+        }
+
+        function startAutoRefresh() {
+            // Clear any existing interval
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            
+            // Set up new interval - refresh every 5 seconds
+            autoRefreshInterval = setInterval(() => {
+                if (isAutoRefreshEnabled && document.getElementById('database-tab').classList.contains('active')) {
+                    loadMessages();
+                }
+            }, 5000);
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadMessages();
+            
+            // Auto-refresh stats every 30 seconds
+            setInterval(loadStats, 30000);
+            
+            // Start auto-refresh for messages
+            startAutoRefresh();
+            
+            // Set button to active state initially
+            document.getElementById('autoRefreshBtn').classList.add('btn-active');
+            
+            // Disable custom query controls initially (since auto-refresh starts enabled)
+            document.getElementById('customQuery').disabled = true;
+            document.getElementById('executeBtn').disabled = true;
+        });
+
+        // Allow Enter key in topic filter - handles both Database and Broker tabs
+        document.getElementById('topicFilter').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                loadMessages();
+            }
+        });
+
+        // Allow Enter key in broker topic filter
+        document.addEventListener('DOMContentLoaded', () => {
+            const brokerFilterInput = document.getElementById('brokerTopicFilter');
+            if (brokerFilterInput) {
+                brokerFilterInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        displayMqttMessages();
+                    }
+                });
+            }
+        });
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+
+            // Load ACL data if switching to ACL tab
+            if (tabName === 'acl' && !window.aclDataLoaded) {
+                loadBrokerConfig();
+            }
+
+            // Auto-connect MQTT if switching to Broker tab
+            if (tabName === 'broker' && !window.mqttConnected) {
+                setTimeout(() => {
+                    initMqttConnection();
+                    window.mqttConnected = true;
+                }, 100);
+            }
+            
+            // Display messages when switching to Broker tab
+            if (tabName === 'broker') {
+                setTimeout(() => {
+                    displayMqttMessages();
+                }, 150);
+            }
+        }
+
+        // Load broker configuration (ACL data)
+        async function loadBrokerConfig() {
+            try {
+                const response = await fetch('/broker-config');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const config = await response.json();
+                
+                displayBrokerSummary(config);
+                displayClients(config.clients || []);
+                displayRoles(config.roles || []);
+                displayDefaultACL(config.defaultACLAccess || {});
+                
+                window.aclDataLoaded = true;
+            } catch (error) {
+                console.error('Error loading ACL config:', error);
+                document.getElementById('broker-summary').innerHTML = `
+                    <div class="error">Failed to load ACL configuration: ${error.message}</div>
+                `;
+            }
+        }
+
+        function displayBrokerSummary(config) {
+            const clientCount = (config.clients || []).length;
+            const roleCount = (config.roles || []).length;
+            const groupCount = (config.groups || []).length;
+            
+            document.getElementById('broker-summary').innerHTML = `
+                <div class="summary-box">
+                    <div class="summary-label">Total Clients</div>
+                    <div class="summary-value">${clientCount}</div>
+                </div>
+                <div class="summary-box">
+                    <div class="summary-label">Total Roles</div>
+                    <div class="summary-value">${roleCount}</div>
+                </div>
+                <div class="summary-box">
+                    <div class="summary-label">Total Groups</div>
+                    <div class="summary-value">${groupCount}</div>
+                </div>
+            `;
+        }
+
+        function displayClients(clients) {
+            const tbody = document.querySelector('#clients-table tbody');
+            tbody.innerHTML = '';
+            
+            clients.forEach(client => {
+                const roles = (client.roles || []).map(r => r.rolename).join(', ');
+                const displayName = client.textname || '-';
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="topic">${client.username}</td>
+                    <td>${displayName}</td>
+                    <td class="payload">${roles}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function displayRoles(roles) {
+            const tbody = document.querySelector('#roles-table tbody');
+            tbody.innerHTML = '';
+            
+            roles.forEach(role => {
+                const acls = role.acls || [];
+                const aclCount = acls.length;
+                
+                let aclsHtml = '';
+                acls.forEach(acl => {
+                    const aclClass = acl.allow ? 'acl-allow' : 'acl-deny';
+                    const allowText = acl.allow ? '✓' : '✗';
+                    aclsHtml += `<div class="acl-item"><span class="${aclClass}">${allowText}</span> ${acl.acltype}: ${acl.topic}</div>`;
+                });
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="topic">${role.rolename}</td>
+                    <td class="timestamp">${aclCount}</td>
+                    <td>${aclsHtml || '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function displayDefaultACL(defaultACL) {
+            const container = document.getElementById('default-acl');
+            let html = '<table class="broker-table">';
+            html += '<tr><th>Permission</th><th>Allowed</th></tr>';
+            
+            Object.entries(defaultACL).forEach(([key, value]) => {
+                const valueClass = value ? 'acl-allow' : 'acl-deny';
+                const valueText = value ? '✓ Allowed' : '✗ Denied';
+                html += `<tr><td>${key}</td><td class="${valueClass}">${valueText}</td></tr>`;
+            });
+            html += '</table>';
+            container.innerHTML = html;
+        }
+
+        // MQTT WebSocket Connection
+        let mqttClient = null;
+        let mqttMessages = [];
+        const MAX_MESSAGES = 200;
+        const MQTT_TOPIC = '#';  // Subscribe to all topics
+
+        // Auto-connect when Broker tab is opened
+        async function initMqttConnection() {
+            if (mqttClient && mqttClient.connected) {
+                console.log('MQTT already connected');
+                return;
+            }
+
+            // WebSocket URL - use wss:// for HTTPS, ws:// for HTTP
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/mqtt`;
+            
+            try {
+                updateMqttStatus('Connecting...', '🟡', 'var(--ctp-yellow)');
+                
+                // Fetch MQTT credentials from server
+                let username = 'admin';
+                let password = 'admin';
+                
+                try {
+                    const credResponse = await fetch('/mqtt-credentials');
+                    if (credResponse.ok) {
+                        const credentials = await credResponse.json();
+                        username = credentials.username;
+                        password = credentials.password;
+                        console.log('Loaded MQTT credentials from server');
+                    } else {
+                        console.warn('Could not load MQTT credentials, using defaults');
+                    }
+                } catch (err) {
+                    console.warn('Error loading MQTT credentials, using defaults:', err);
+                }
+                
+                mqttClient = mqtt.connect(wsUrl, {
+                    clientId: 'msa-admin-' + Math.random().toString(16).substr(2, 8),
+                    username: username,
+                    password: password,
+                    clean: true,
+                    reconnectPeriod: 5000,
+                });
+
+                mqttClient.on('connect', () => {
+                    console.log('MQTT connected');
+                    
+                    // Subscribe to topic
+                    mqttClient.subscribe(MQTT_TOPIC, (err) => {
+                        if (err) {
+                            console.error('Subscribe error:', err);
+                            updateMqttStatus('Error', '❌', 'var(--ctp-red)');
+                        } else {
+                            console.log('Subscribed to:', MQTT_TOPIC);
+                            updateMqttStatus(`Connected`, '🟢', 'var(--ctp-green)');
+                        }
+                    });
+                });
+
+                mqttClient.on('message', (topic, payload) => {
+                    const timestamp = new Date().toISOString().replace('T', ' ').substr(0, 23);
+                    const message = {
+                        timestamp: timestamp,
+                        topic: topic,
+                        payload: payload.toString()
+                    };
+                    
+                    // Add to beginning of array (newest first)
+                    mqttMessages.unshift(message);
+                    
+                    // Keep only last MAX_MESSAGES
+                    if (mqttMessages.length > MAX_MESSAGES) {
+                        mqttMessages = mqttMessages.slice(0, MAX_MESSAGES);
+                    }
+                    
+                    displayMqttMessages();
+                });
+
+                mqttClient.on('error', (err) => {
+                    console.error('MQTT error:', err);
+                    updateMqttStatus('Error', '❌', 'var(--ctp-red)');
+                });
+
+                mqttClient.on('close', () => {
+                    console.log('MQTT disconnected');
+                    updateMqttStatus('Disconnected', '⚫', 'var(--ctp-subtext0)');
+                });
+
+                mqttClient.on('reconnect', () => {
+                    console.log('MQTT reconnecting...');
+                    updateMqttStatus('Reconnecting...', '�', 'var(--ctp-yellow)');
+                });
+
+            } catch (error) {
+                console.error('Connection error:', error);
+                updateMqttStatus('Error', '❌', 'var(--ctp-red)');
+            }
+        }
+
+        function updateMqttStatus(text, icon, color) {
+            const statusDiv = document.getElementById('mqttStatus');
+            if (statusDiv) {
+                statusDiv.querySelector('.status-text').textContent = text;
+                statusDiv.querySelector('.status-indicator').textContent = icon;
+                if (color) {
+                    statusDiv.querySelector('.status-indicator').style.color = color;
+                }
+            }
+        }
+
+        function displayMqttMessages() {
+            const tbody = document.querySelector('#mqtt-messages-table tbody');
+            if (!tbody) {
+                console.log('ERROR: tbody not found');
+                return;
+            }
+            
+            console.log('displayMqttMessages called, total messages:', mqttMessages.length);
+            
+            // Get filter values
+            const filterInput = document.getElementById('brokerTopicFilter');
+            const filterValue = filterInput ? filterInput.value.trim().toLowerCase() : '';
+            
+            const timeFilterSelect = document.getElementById('brokerTimeFilter');
+            const timeFilterValue = timeFilterSelect ? timeFilterSelect.value : 'all';
+            
+            const limitSelect = document.getElementById('brokerLimit');
+            const limitValue = limitSelect ? parseInt(limitSelect.value) : 100;
+            
+            console.log('Filters - topic:', filterValue, 'time:', timeFilterValue, 'limit:', limitValue);
+            
+            // Start with all messages
+            let filteredMessages = mqttMessages;
+            
+            // Apply topic filter
+            if (filterValue) {
+                filteredMessages = filteredMessages.filter(msg => 
+                    msg.topic.toLowerCase().includes(filterValue)
+                );
+            }
+            
+            // Apply time range filter (messages have ISO timestamp)
+            if (timeFilterValue !== 'all') {
+                const minutesAgo = parseInt(timeFilterValue);
+                const cutoffTime = new Date(Date.now() - minutesAgo * 60 * 1000);
+                filteredMessages = filteredMessages.filter(msg => {
+                    const msgTime = new Date(msg.timestamp);
+                    return msgTime >= cutoffTime;
+                });
+            }
+            
+            // Apply limit (take first N messages)
+            filteredMessages = filteredMessages.slice(0, limitValue);
+            
+            console.log('Filtered messages:', filteredMessages.length);
+            
+            tbody.innerHTML = '';
+            
+            filteredMessages.forEach(msg => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="timestamp">${msg.timestamp}</td>
+                    <td class="topic">${msg.topic}</td>
+                    <td class="payload">${msg.payload}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            console.log('Table updated with', filteredMessages.length, 'rows');
+        }
+
+        function clearMqttMessages() {
+            // Clear the filter input
+            const filterInput = document.getElementById('brokerTopicFilter');
+            if (filterInput) {
+                filterInput.value = '';
+            }
+            
+            // Reset time filter to default (Last 6 Hours)
+            const timeFilterSelect = document.getElementById('brokerTimeFilter');
+            if (timeFilterSelect) {
+                timeFilterSelect.value = '360';
+            }
+            
+            // Reset limit to default (100)
+            const limitSelect = document.getElementById('brokerLimit');
+            if (limitSelect) {
+                limitSelect.value = '100';
+            }
+            
+            // Redisplay messages with default filters
+            displayMqttMessages();
+        }
+
+        // Wire Apply button for topic filter (apply filter only when user clicks Apply)
+        document.addEventListener('DOMContentLoaded', () => {
+            const applyBtn = document.getElementById('applyFilterBtn');
+            if (applyBtn) {
+                applyBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    displayMqttMessages();
+                });
+            }
+        });
+    </script>
+</body>
+</html>

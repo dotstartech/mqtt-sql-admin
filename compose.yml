@@ -1,0 +1,46 @@
+services:
+  mqtt-sql-admin:
+    image: mqtt-sql-admin:0.1.0
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        UID: ${USER_ID:-1000}
+        GID: ${GROUP_ID:-1000}
+      tags:
+      - mqtt-sql-admin:0.1.0
+    container_name: mqtt-sql-admin
+    hostname: mqtt-sql-admin
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - msa-data:/mosquitto/data
+      - msa-log:/mosquitto/log
+    ports:
+      - 1883:1883
+      - 8883:8883
+      - 8000:8000
+      - 8080:8080
+      - 9001:9001
+    networks:
+      - dev-proxy
+    secrets:
+      - dynsec.json
+      - msa.secrets
+    restart: always
+
+secrets:
+  dynsec.json:
+    external: true
+  msa.secrets:
+    external: true
+
+volumes:
+  msa-data:
+    name: msa-data
+  msa-log:
+    name: msa-log
+
+networks:
+  dev-proxy:
+    driver: overlay
+    name: dev-proxy

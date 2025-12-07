@@ -1,0 +1,11 @@
+**/*.key
+**/*.crt
+**/*.pem
+**/*.der
+
+**/*.log
+**/.idea
+
+.env
+.vscode/settings.json
+*.secrets

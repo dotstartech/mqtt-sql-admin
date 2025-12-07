@@ -19,9 +19,4 @@ docker secret create msa.secrets msa.secrets
 docker stack deploy -c compose.yml msa
 ```
 
-To clean persistent data
-```bash
-docker volume rm msa-data msa-log
-```
-
-When running with TLS termination inside the MQTT broker (not on the reverse proxy), mount the TLS key/certificate pair in the `/mosquitto/tls` directory inside Docker container. Files should be called `server.key` and `server.crt` and have read permissions for the image internal user `admin`.
+To enable TLS termination inside the Mosquitto broker, mount your TLS certificate and key to `/mosquitto/security/` (e.g., `server.crt` and `server.key`) and uncomment the `certfile`/`keyfile` lines in [`mosquitto/config/mosquitto.conf`](mosquitto/config/mosquitto.conf). For mutual TLS (mTLS) with client certificates, also configure the `cafile` and `require_certificate` options.

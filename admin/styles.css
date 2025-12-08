@@ -52,7 +52,7 @@ body {
 header {
     background: var(--ctp-mantle);
     color: var(--ctp-text);
-    padding: 30px;
+    padding: 22px;
     text-align: center;
 }
 
@@ -75,7 +75,7 @@ header h1 {
     background: var(--ctp-surface0);
     color: var(--ctp-subtext0);
     border: none;
-    border-radius: 6px 6px 0 0;
+    border-radius: 4px 4px 0 0;
     cursor: pointer;
     font-size: 14px;
     font-weight: 600;
@@ -166,7 +166,7 @@ label {
 input, select, button {
     padding: 10px 14px;
     border: 1px solid var(--ctp-surface2);
-    border-radius: 4px;
+    border-radius: 2px;
     font-size: 14px;
     background: var(--ctp-surface0);
     color: var(--ctp-text);
@@ -267,14 +267,14 @@ button:disabled {
 }
 
 .content {
-    padding: 24px;
+    padding: 16px;
 }
 
 .query-builder {
     margin-bottom: 16px;
     padding: 16px;
     background: var(--ctp-mantle);
-    border-radius: 6px;
+    border-radius: 2px;
     border: 1px solid var(--ctp-surface0);
 }
 
@@ -286,7 +286,7 @@ textarea {
     width: 100%;
     padding: 14px;
     border: 1px solid var(--ctp-surface2);
-    border-radius: 4px;
+    border-radius: 2px;
     font-family: 'Courier New', monospace;
     font-size: 14px;
     resize: vertical;
@@ -299,7 +299,7 @@ textarea {
     background: var(--ctp-red);
     color: var(--ctp-crust);
     padding: 14px;
-    border-radius: 4px;
+    border-radius: 2px;
     margin-bottom: 16px;
     border: 1px solid var(--ctp-maroon);
     font-size: 14px;
@@ -309,7 +309,7 @@ textarea {
     background: var(--ctp-green);
     color: var(--ctp-crust);
     padding: 14px;
-    border-radius: 4px;
+    border-radius: 2px;
     margin-bottom: 16px;
     border: 1px solid var(--ctp-teal);
     font-size: 14px;
@@ -320,7 +320,7 @@ table {
     border-collapse: collapse;
     margin-top: 8px;
     background: var(--ctp-mantle);
-    border-radius: 6px;
+    border-radius: 2px;
     overflow: hidden;
 }
 
@@ -402,14 +402,14 @@ td:first-child {
     margin-bottom: 12px;
     padding: 8px 12px;
     background: var(--ctp-surface0);
-    border-radius: 4px;
+    border-radius: 2px;
     font-size: 16px;
 }
 
 .broker-content {
     background: var(--ctp-mantle);
     border: 1px solid var(--ctp-surface0);
-    border-radius: 6px;
+    border-radius: 2px;
     padding: 16px;
     max-height: 500px;
     overflow: auto;
@@ -443,7 +443,7 @@ td:first-child {
 .acl-item {
     padding: 4px 8px;
     background: var(--ctp-surface0);
-    border-radius: 3px;
+    border-radius: 2px;
     margin: 2px 0;
     font-size: 12px;
 }
@@ -467,7 +467,7 @@ td:first-child {
     display: inline-block;
     padding: 8px 16px;
     background: var(--ctp-surface0);
-    border-radius: 4px;
+    border-radius: 2px;
     margin-right: 12px;
     margin-bottom: 12px;
 }
@@ -488,21 +488,22 @@ td:first-child {
 /* Checkbox styling for filters */
 .checkbox-group {
     display: flex;
+    flex-direction: column;
     align-items: center;
+    gap: 2px;
 }
 
-.checkbox-group label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    color: var(--ctp-text);
-    font-size: 13px;
+.checkbox-label {
+    color: var(--ctp-subtext0);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .checkbox-group input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     accent-color: var(--ctp-mauve);
     cursor: pointer;
 }

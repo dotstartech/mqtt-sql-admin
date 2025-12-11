@@ -13,17 +13,13 @@
             <h1>MQTT SQL Admin</h1>
         </header>
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('database')">Database</button>
-            <button class="tab" onclick="switchTab('broker')">Broker</button>
+            <button class="tab active" onclick="switchTab('database')"><span id="dbStatusIcon" class="tab-status">⚫</span> Database</button>
+            <button class="tab" onclick="switchTab('broker')"><span id="mqttStatusIcon" class="tab-status">⚫</span> Broker</button>
             <button class="tab" onclick="switchTab('acl')">ACL</button>
         </div>
         <div id="database-tab" class="tab-content active">
         <div class="controls">
             <div class="controls-left">
-                <div class="db-status">
-                    <span class="status-text" id="dbStatus">Connecting...</span>
-                    <span class="status-indicator" id="dbStatusIcon">⏳</span>
-                </div>
                 <div class="control-group">
                     <label for="topicFilter">Topic Filter</label>
                     <input type="text" id="topicFilter" placeholder="data/test/%">
@@ -51,15 +47,15 @@
                         <option value="1000">1000</option>
                     </select>
                 </div>
-                <button onclick="loadMessages()">🔍 Apply</button>
-                <button onclick="clearFilter()">🗑️ Clear</button>
-                <button id="autoRefreshBtn" onclick="toggleAutoRefresh()">⏸️ Auto-Refresh</button>
-                <div class="separator"></div>
+                <button onclick="loadMessages()">Apply</button>
+                <button onclick="clearFilter()">Clear</button>
+                <button id="autoRefreshBtn" onclick="toggleAutoRefresh()">Auto-Refresh</button>
+                <div class="separator-vertical"></div>
                 <div class="control-group flex-grow">
                     <label for="customQuery">Custom Query</label>
                     <input type="text" id="customQuery" placeholder="SELECT topic, payload, ulid FROM msg WHERE ...">
                 </div>
-                <button id="executeBtn" onclick="executeCustomQuery()">▶️ Execute</button>
+                <button id="executeBtn" onclick="executeCustomQuery()">Execute</button>
             </div>
         </div>
         <div class="content">
@@ -113,13 +109,9 @@
     <div id="broker-tab" class="tab-content">
         <div class="controls">
             <div class="controls-left">
-                <div class="db-status" id="mqttStatus">
-                    <span class="status-text">Connecting...</span>
-                    <span class="status-indicator">⚫</span>
-                </div>
                 <div class="control-group">
                     <label for="brokerTopicFilter">Topic Filter</label>
-                    <input type="text" id="brokerTopicFilter" placeholder="Filter messages by topic">
+                    <input type="text" id="brokerTopicFilter" placeholder="e.g. data/+/state or sensors/#">
                 </div>
                 <div class="control-group">
                     <label for="brokerTimeFilter">Time Range</label>
@@ -146,11 +138,33 @@
                     </select>
                 </div>
                 <div class="control-group checkbox-group">
-                    <span class="checkbox-label">Retained Only</span>
+                    <span class="checkbox-label">Retained</span>
                     <input type="checkbox" id="persistentOnlyFilter">
                 </div>
-                <button id="applyFilterBtn">🔍 Apply</button>
-                <button onclick="clearMqttMessages()">🗑️ Clear</button>
+                <button id="applyFilterBtn">Apply</button>
+                <button onclick="clearMqttMessages()">Clear</button>
+                <div class="separator-vertical"></div>
+                <div class="control-group">
+                    <label for="publishTopic">Topic</label>
+                    <input type="text" id="publishTopic" placeholder="e.g. sensors/temperature">
+                </div>
+                <div class="control-group">
+                    <label for="publishMessage">Message</label>
+                    <input type="text" id="publishMessage" placeholder="Payload content">
+                </div>
+                <div class="control-group checkbox-group">
+                    <span class="checkbox-label">Retained</span>
+                    <input type="checkbox" id="publishRetained">
+                </div>
+                <div class="control-group">
+                    <label for="publishQos">QoS</label>
+                    <select id="publishQos">
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="2" selected>2</option>
+                    </select>
+                </div>
+                <button onclick="publishMessage()">Send</button>
             </div>
         </div>
         <div class="content">
@@ -162,6 +176,7 @@
                             <th>Topic</th>
                             <th>Payload</th>
                             <th>Retained</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -222,6 +237,55 @@
             }
         }
 
+        // MQTT topic matching with wildcards (+ and #)
+        // Pattern: the filter pattern that may contain + and # wildcards
+        // Topic: the actual topic string to match against
+        // Returns true if topic matches the pattern, false otherwise
+        function mqttTopicMatches(pattern, topic) {
+            // Empty pattern matches nothing
+            if (!pattern) return false;
+            
+            // If no wildcards, do exact match
+            if (!pattern.includes('+') && !pattern.includes('#')) {
+                return pattern === topic;
+            }
+            
+            const patternLevels = pattern.split('/');
+            const topicLevels = topic.split('/');
+            
+            let pi = 0; // pattern index
+            let ti = 0; // topic index
+            
+            while (pi < patternLevels.length) {
+                const patternLevel = patternLevels[pi];
+                
+                if (patternLevel === '#') {
+                    // '#' must be the last level in the pattern
+                    // It matches zero or more remaining levels
+                    return true;
+                } else if (patternLevel === '+') {
+                    // '+' matches exactly one level
+                    if (ti >= topicLevels.length) {
+                        // No more topic levels to match
+                        return false;
+                    }
+                    // Move to next level in both pattern and topic
+                    pi++;
+                    ti++;
+                } else {
+                    // Literal match required
+                    if (ti >= topicLevels.length || patternLevel !== topicLevels[ti]) {
+                        return false;
+                    }
+                    pi++;
+                    ti++;
+                }
+            }
+            
+            // Pattern exhausted - topic must also be exhausted for a match
+            return ti === topicLevels.length;
+        }
+
         async function executeSQL(sql) {
             try {
                 const response = await fetch(`${API_BASE}/v1/execute`, {
@@ -251,16 +315,17 @@
         }
 
         async function loadStats() {
+            // Show connecting state
+            document.getElementById('dbStatusIcon').textContent = '🟡';
+            
             try {
                 // Simple query to test database connectivity
                 const result = await executeSQL(`SELECT COUNT(*) FROM msg LIMIT 1`);
                 if (result.result) {
-                    document.getElementById('dbStatus').textContent = 'Connected';
                     document.getElementById('dbStatusIcon').textContent = '🟢';
                 }
             } catch (error) {
                 console.error('Error loading stats:', error);
-                document.getElementById('dbStatus').textContent = 'Error';
                 document.getElementById('dbStatusIcon').textContent = '🔴';
             }
         }
@@ -465,7 +530,7 @@
                 customQueryField.disabled = true;
                 executeBtn.disabled = true;
                 
-                btn.textContent = '⏸️ Auto-Refresh';
+                btn.textContent = 'Auto-Refresh';
                 btn.classList.add('btn-active');
                 
                 // Immediately load messages before starting the interval
@@ -477,7 +542,7 @@
                 customQueryField.disabled = false;
                 executeBtn.disabled = false;
                 
-                btn.textContent = '▶️ Auto-Refresh';
+                btn.textContent = 'Auto-Refresh';
                 btn.classList.remove('btn-active');
                 stopAutoRefresh();
             }
@@ -682,9 +747,10 @@
 
         // MQTT WebSocket Connection
         let mqttClient = null;
-        let mqttMessages = [];
-        const MAX_MESSAGES = 200;
-        const MQTT_TOPIC = '#';  // Subscribe to all topics
+        // Map with topic as key - each topic has only one entry (latest message)
+        let mqttMessagesMap = new Map();
+        const MAX_TOPICS = 500;
+        const MQTT_TOPIC = '+/polo/#';  // Subscribe to all topics
 
         // Auto-connect when Broker tab is opened
         async function initMqttConnection() {
@@ -751,12 +817,14 @@
                         retain: packet.retain || false
                     };
                     
-                    // Add to beginning of array (newest first)
-                    mqttMessages.unshift(message);
+                    // Update or add message by topic (topic is the unique key)
+                    mqttMessagesMap.set(topic, message);
                     
-                    // Keep only last MAX_MESSAGES
-                    if (mqttMessages.length > MAX_MESSAGES) {
-                        mqttMessages = mqttMessages.slice(0, MAX_MESSAGES);
+                    // If we exceed MAX_TOPICS, remove oldest entries
+                    // Map maintains insertion order, so we remove from the beginning
+                    if (mqttMessagesMap.size > MAX_TOPICS) {
+                        const firstKey = mqttMessagesMap.keys().next().value;
+                        mqttMessagesMap.delete(firstKey);
                     }
                     
                     displayMqttMessages();
@@ -784,14 +852,76 @@
         }
 
         function updateMqttStatus(text, icon, color) {
-            const statusDiv = document.getElementById('mqttStatus');
-            if (statusDiv) {
-                statusDiv.querySelector('.status-text').textContent = text;
-                statusDiv.querySelector('.status-indicator').textContent = icon;
+            const statusIcon = document.getElementById('mqttStatusIcon');
+            if (statusIcon) {
+                statusIcon.textContent = icon;
                 if (color) {
-                    statusDiv.querySelector('.status-indicator').style.color = color;
+                    statusIcon.style.color = color;
                 }
             }
+        }
+
+        // Publish a message to the MQTT broker
+        function publishMessage() {
+            if (!mqttClient || !mqttClient.connected) {
+                console.error('MQTT client not connected, cannot publish message');
+                alert('MQTT client not connected. Please wait for connection.');
+                return;
+            }
+            
+            const topicInput = document.getElementById('publishTopic');
+            const messageInput = document.getElementById('publishMessage');
+            const retainedCheckbox = document.getElementById('publishRetained');
+            const qosSelect = document.getElementById('publishQos');
+            
+            const topic = topicInput ? topicInput.value.trim() : '';
+            const message = messageInput ? messageInput.value : '';
+            const retained = retainedCheckbox ? retainedCheckbox.checked : false;
+            const qos = qosSelect ? parseInt(qosSelect.value) : 2;
+            
+            if (!topic) {
+                alert('Please enter a topic');
+                topicInput.focus();
+                return;
+            }
+            
+            mqttClient.publish(topic, message, { retain: retained, qos: qos }, (err) => {
+                if (err) {
+                    console.error('Failed to publish message:', err);
+                    alert('Failed to publish message: ' + err.message);
+                } else {
+                    console.log(`Published message to ${topic} (QoS: ${qos}, Retained: ${retained})`);
+                    // Clear the message input but keep topic for convenience
+                    messageInput.value = '';
+                }
+            });
+        }
+
+        // Delete a retained message by publishing an empty payload with retain flag
+        // This clears the retained message from the broker (and triggers DB deletion via plugin)
+        function deleteRetainedMessage(topic) {
+            if (!mqttClient || !mqttClient.connected) {
+                console.error('MQTT client not connected, cannot delete retained message');
+                alert('MQTT client not connected. Please wait for connection.');
+                return;
+            }
+            
+            if (!confirm(`Delete retained message for topic:\n${topic}?`)) {
+                return;
+            }
+            
+            // Publish empty payload with retain flag to clear the retained message
+            mqttClient.publish(topic, '', { retain: true, qos: 1 }, (err) => {
+                if (err) {
+                    console.error('Failed to delete retained message:', err);
+                    alert('Failed to delete retained message: ' + err.message);
+                } else {
+                    console.log('Deleted retained message for topic:', topic);
+                    // Remove from local map and refresh display
+                    mqttMessagesMap.delete(topic);
+                    displayMqttMessages();
+                }
+            });
         }
 
         function displayMqttMessages() {
@@ -801,11 +931,11 @@
                 return;
             }
             
-            console.log('displayMqttMessages called, total messages:', mqttMessages.length);
+            console.log('displayMqttMessages called, total topics:', mqttMessagesMap.size);
             
             // Get filter values
             const filterInput = document.getElementById('brokerTopicFilter');
-            const filterValue = filterInput ? filterInput.value.trim().toLowerCase() : '';
+            const filterValue = filterInput ? filterInput.value.trim() : '';
             
             const timeFilterSelect = document.getElementById('brokerTimeFilter');
             const timeFilterValue = timeFilterSelect ? timeFilterSelect.value : 'all';
@@ -818,18 +948,19 @@
             
             console.log('Filters - topic:', filterValue, 'time:', timeFilterValue, 'limit:', limitValue, 'persistentOnly:', persistentOnly);
             
-            // Start with all messages
-            let filteredMessages = mqttMessages;
+            // Convert Map values to array and sort by timestamp (newest first)
+            let filteredMessages = Array.from(mqttMessagesMap.values())
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
             // Apply persistent-only filter
             if (persistentOnly) {
                 filteredMessages = filteredMessages.filter(msg => msg.retain === true);
             }
             
-            // Apply topic filter
+            // Apply topic filter with MQTT wildcard support (+ and #)
             if (filterValue) {
                 filteredMessages = filteredMessages.filter(msg => 
-                    msg.topic.toLowerCase().includes(filterValue)
+                    mqttTopicMatches(filterValue, msg.topic)
                 );
             }
             
@@ -852,15 +983,24 @@
             
             filteredMessages.forEach(msg => {
                 const row = document.createElement('tr');
+                // Use topic as unique row identifier for potential future in-place updates
+                row.dataset.topic = msg.topic;
                 // Highlight retained messages
-                if (msg.retain) {
-                    row.classList.add('retained-message');
-                }
+                //if (msg.retain) {
+                //    row.classList.add('retained-message');
+                //}
+                
+                // Build actions column - show trash icon only for retained messages
+                const actionsHtml = msg.retain 
+                    ? `<button class="delete-btn" onclick="deleteRetainedMessage('${msg.topic.replace(/'/g, "\\'")}')">🗑️</button>`
+                    : '';
+                
                 row.innerHTML = `
                     <td class="timestamp">${msg.timestamp}</td>
                     <td class="topic">${msg.topic}</td>
                     <td class="payload">${msg.payload}</td>
                     <td class="retained">${msg.retain ? '✓' : ''}</td>
+                    <td class="actions">${actionsHtml}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -886,8 +1026,17 @@
             if (limitSelect) {
                 limitSelect.value = '100';
             }
-            
-            // Redisplay messages with default filters
+
+            // Clear the persistent-only checkbox
+            const persistentOnlyCheckbox = document.getElementById('persistentOnlyFilter');
+            if (persistentOnlyCheckbox) {
+                persistentOnlyCheckbox.checked = false;
+            }
+
+            // Clear all stored messages
+            //mqttMessagesMap.clear();
+
+            // Redisplay messages with reset filters (messages remain in map)
             displayMqttMessages();
         }
 

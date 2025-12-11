@@ -52,7 +52,7 @@ body {
 header {
     background: var(--ctp-mantle);
     color: var(--ctp-text);
-    padding: 22px;
+    padding: 16px;
     text-align: center;
 }
 
@@ -91,6 +91,11 @@ header h1 {
     background: var(--ctp-mantle);
     color: var(--ctp-mauve);
     border-top: 2px solid var(--ctp-mauve);
+}
+
+.tab-status {
+    font-size: 12px;
+    margin-right: 4px;
 }
 
 .tab-content {
@@ -173,7 +178,7 @@ input, select, button {
 }
 
 input[type="text"] {
-    min-width: 190px;
+    min-width: 160px;
 }
 
 #topicFilter {
@@ -185,20 +190,12 @@ input[type="text"] {
 }
 
 #customQuery {
-    min-width: 720px;
+    min-width: 760px;
     flex: 1;
 }
 
 select {
-    min-width: 80px;
-}
-
-.separator {
-    width: 2px;
-    height: 40px;
-    background: var(--ctp-surface2);
-    margin: 0 12px;
-    align-self: center;
+    min-width: 72px;
 }
 
 input[type="text"]:focus, select:focus, textarea:focus {
@@ -523,4 +520,48 @@ td.retained {
     font-size: 16px;
     color: var(--ctp-green);
     font-weight: bold;
+}
+
+/* Actions column styling */
+td.actions {
+    text-align: center;
+    width: 60px;
+}
+
+.delete-btn {
+    background: transparent;
+    border: 1px solid var(--ctp-surface2);
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+    opacity: 0.7;
+}
+
+.delete-btn:hover {
+    background: var(--ctp-red);
+    border-color: var(--ctp-red);
+    opacity: 1;
+}
+
+/* Vertical separator for controls */
+.separator-vertical {
+    width: 1px;
+    height: 40px;
+    background: var(--ctp-surface2);
+    margin: 0 8px;
+}
+
+/* Publish controls styling */
+#publishTopic {
+    width: 340px;
+}
+
+#publishMessage {
+    width: 500px;
+}
+
+#publishQos {
+    width: 80px;
 }

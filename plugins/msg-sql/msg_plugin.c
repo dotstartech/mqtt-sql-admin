@@ -36,7 +36,8 @@ static struct ulid_generator ulid_gen;
 static mosquitto_plugin_id_t *mosq_pid = NULL;
 
 static sqlite3 *msg_db = NULL;
-static sqlite3_stmt *stmt = NULL;
+static sqlite3_stmt *insert_stmt = NULL;
+static sqlite3_stmt *delete_stmt = NULL;
 
 // Topic exclusion patterns
 static char *exclude_patterns[MAX_EXCLUDE_PATTERNS];
@@ -398,25 +399,46 @@ static int on_message_callback(int event, void *event_data, void *userdata) {
         return mosquitto_property_add_string_pair(&ed->properties, MQTT_PROP_USER_PROPERTY, "ulid", ulid);
     }
 
-    if(stmt != NULL) {
-		sqlite3_bind_text(stmt, 1, ulid, -1, SQLITE_STATIC);
+    // Check if this is a delete operation (empty retained message)
+    if (ed->retain && ed->payloadlen == 0) {
+        // Delete all messages for this topic from database
+        if (delete_stmt != NULL) {
+            char *topic = strdup(ed->topic);
+            sqlite3_bind_text(delete_stmt, 1, topic, -1, SQLITE_STATIC);
+            
+            int rc = sqlite3_step(delete_stmt);
+            if (rc != SQLITE_DONE) {
+                mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to delete topic %s: %s", topic, sqlite3_errmsg(msg_db));
+            } else {
+                int changes = sqlite3_changes(msg_db);
+                mosquitto_log_printf(MOSQ_LOG_INFO, "Deleted %d message(s) for topic: %s", changes, topic);
+            }
+            sqlite3_reset(delete_stmt);
+            free(topic);
+        }
+        // Still add ULID property for consistency
+        return mosquitto_property_add_string_pair(&ed->properties, MQTT_PROP_USER_PROPERTY, "ulid", ulid);
+    }
+
+    if(insert_stmt != NULL) {
+		sqlite3_bind_text(insert_stmt, 1, ulid, -1, SQLITE_STATIC);
         
 		char *topic = strdup(ed->topic);
-		sqlite3_bind_text(stmt, 2, topic, -1, SQLITE_STATIC);
+		sqlite3_bind_text(insert_stmt, 2, topic, -1, SQLITE_STATIC);
 		
 		char *payload = strndup((char *)ed->payload, ed->payloadlen);
-    	sqlite3_bind_text(stmt, 3, payload, -1, SQLITE_STATIC);
+    	sqlite3_bind_text(insert_stmt, 3, payload, -1, SQLITE_STATIC);
 
-        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)msEpoch);
+        sqlite3_bind_int64(insert_stmt, 4, (sqlite3_int64)msEpoch);
 
         // Store retain flag (1 = retained/persistent, 0 = transient)
-        sqlite3_bind_int(stmt, 5, ed->retain ? 1 : 0);
+        sqlite3_bind_int(insert_stmt, 5, ed->retain ? 1 : 0);
 
         // Store QoS level (0, 1, or 2)
-        sqlite3_bind_int(stmt, 6, ed->qos);
+        sqlite3_bind_int(insert_stmt, 6, ed->qos);
     	
-		sqlite3_step(stmt);
-    	sqlite3_reset(stmt);
+		sqlite3_step(insert_stmt);
+    	sqlite3_reset(insert_stmt);
 
         mosquitto_log_printf(MOSQ_LOG_DEBUG, "Stored event: topic=%s retain=%d qos=%d payload=%s", topic, ed->retain, ed->qos, payload);
 
@@ -463,10 +485,16 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
             mosquitto_log_printf(MOSQ_LOG_ERR, "SQL error: %s", err_msg);
 			sqlite3_free(err_msg);
 		} else {
-    		rc = sqlite3_prepare_v2(msg_db, "insert into msg (ulid, topic, payload, timestamp, retain, qos) values (?1, ?2, ?3, ?4, ?5, ?6)", -1, &stmt, 0);
+    		rc = sqlite3_prepare_v2(msg_db, "insert into msg (ulid, topic, payload, timestamp, retain, qos) values (?1, ?2, ?3, ?4, ?5, ?6)", -1, &insert_stmt, 0);
     		if (rc != SQLITE_OK) {
                 mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to prepare insert data statement: %s", sqlite3_errmsg(msg_db));
 			}
+
+            // Prepare delete statement for clearing retained messages
+            rc = sqlite3_prepare_v2(msg_db, "DELETE FROM msg WHERE topic = ?1", -1, &delete_stmt, 0);
+            if (rc != SQLITE_OK) {
+                mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to prepare delete statement: %s", sqlite3_errmsg(msg_db));
+            }
 		}
 	}
 
@@ -487,9 +515,13 @@ int mosquitto_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, int op
     // Free exclusion patterns
     free_exclude_patterns();
 
-	if (stmt != NULL) {
-		sqlite3_finalize(stmt);
+	if (insert_stmt != NULL) {
+		sqlite3_finalize(insert_stmt);
 	}
+
+    if (delete_stmt != NULL) {
+        sqlite3_finalize(delete_stmt);
+    }
 
 	if (msg_db != NULL) {
 		sqlite3_close(msg_db);

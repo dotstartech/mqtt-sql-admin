@@ -87,18 +87,14 @@ VOLUME ["/mosquitto/data", "/mosquitto/log"]
 
 # Standard MQTT
 EXPOSE 1883
-
 # MQTT over TLS  
 EXPOSE 8883
-
 # MQTT over WebSocket
-# EXPOSE 9001 - FOR FUTURE USE
-
+EXPOSE 9001
 # Admin interface (nginx)
 EXPOSE 8080
-
 # libSQL queries over HTTP
-# EXPOSE 8000 - FOR FUTURE USE
+EXPOSE 8000
 
 WORKDIR /mosquitto/
 

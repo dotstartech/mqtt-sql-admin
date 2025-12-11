@@ -26,7 +26,7 @@ IMAGE_NAME="mqtt-sql-admin"
 echo "Building $IMAGE_NAME version $VERSION..."
 
 # Build and tag with version
-docker build --no-cache -t "$IMAGE_NAME:$VERSION" -t "$IMAGE_NAME:latest" -f "$PROJECT_DIR/docker/Dockerfile" "$PROJECT_DIR"
+docker build -t "$IMAGE_NAME:$VERSION" -t "$IMAGE_NAME:latest" -f "$PROJECT_DIR/docker/Dockerfile" "$PROJECT_DIR"
 
 echo ""
 echo "Successfully built:"

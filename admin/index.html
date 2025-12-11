@@ -69,9 +69,6 @@
     <div id="acl-tab" class="tab-content">
         <div class="content">
             <div class="broker-section">
-                <div id="broker-summary"></div>
-            </div>
-            <div class="broker-section">
                 <h3>📋 Clients</h3>
                 <div class="broker-content">
                     <table class="acl-table" id="clients-table">
@@ -675,31 +672,11 @@
                 window.aclDataLoaded = true;
             } catch (error) {
                 console.error('Error loading ACL config:', error);
-                document.getElementById('broker-summary').innerHTML = `
-                    <div class="error">Failed to load ACL configuration: ${error.message}</div>
-                `;
             }
         }
 
         function displayBrokerSummary(config) {
-            const clientCount = (config.clients || []).length;
-            const roleCount = (config.roles || []).length;
-            const groupCount = (config.groups || []).length;
-            
-            document.getElementById('broker-summary').innerHTML = `
-                <div class="summary-box">
-                    <div class="summary-label">Total Clients</div>
-                    <div class="summary-value">${clientCount}</div>
-                </div>
-                <div class="summary-box">
-                    <div class="summary-label">Total Roles</div>
-                    <div class="summary-value">${roleCount}</div>
-                </div>
-                <div class="summary-box">
-                    <div class="summary-label">Total Groups</div>
-                    <div class="summary-value">${groupCount}</div>
-                </div>
-            `;
+            // Summary statistics removed from UI
         }
 
         function displayClients(clients) {

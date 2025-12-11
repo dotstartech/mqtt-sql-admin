@@ -52,7 +52,7 @@ body {
 header {
     background: var(--ctp-mantle);
     color: var(--ctp-text);
-    padding: 16px;
+    padding: 8px;
     text-align: center;
 }
 
@@ -107,7 +107,7 @@ header h1 {
 }
 
 .controls {
-    padding: 12px 24px;
+    padding: 8px 8px;
     background: var(--ctp-mantle);
     border-bottom: 1px solid var(--ctp-surface0);
     display: flex;
@@ -169,7 +169,7 @@ label {
 }
 
 input, select, button {
-    padding: 10px 14px;
+    padding: 8px 14px;
     border: 1px solid var(--ctp-surface2);
     border-radius: 2px;
     font-size: 14px;
@@ -195,7 +195,7 @@ input[type="text"] {
 }
 
 select {
-    min-width: 72px;
+    min-width: 64px;
 }
 
 input[type="text"]:focus, select:focus, textarea:focus {
@@ -264,7 +264,7 @@ button:disabled {
 }
 
 .content {
-    padding: 14px;
+    padding: 8px;
 }
 
 .query-builder {
@@ -593,5 +593,5 @@ td.actions {
 }
 
 #publishQos {
-    width: 80px;
+    width: 72px;
 }

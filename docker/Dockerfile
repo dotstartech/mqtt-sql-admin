@@ -77,6 +77,7 @@ ARG GID=1883
 
 # Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
         libssl3t64 \
         libcjson1 \
         libsqlite3-0 \

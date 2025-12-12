@@ -66,6 +66,8 @@ Runs integration tests to verify MQTT persistence and topic exclusion:
 **Measure end-to-end latency (send → storage):**
 ```bash
 ./dev/stress-test.sh -n 500 -p 50 --latency
+# or a more realistic use case
+./dev/stress-test.sh -n 18000 -d 30 -p 1000 -r -q 2 -l
 ```
 
 ### Understanding the Output

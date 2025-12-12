@@ -167,9 +167,82 @@ fi
 echo ""
 
 # -----------------------------------------
-# Test 6: Query recent messages
+# Test 6: Delete with ULID property (targeted delete)
 # -----------------------------------------
-echo "--- Test 6: Recent messages ---"
+echo "--- Test 6: Delete with ULID property ---"
+TOPIC_DELETE_ULID="data/test/delete_ulid_$TEST_ID"
+
+# Publish first message
+log_info "Publishing first retained message to $TOPIC_DELETE_ULID"
+mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_DELETE_ULID" -m '{"msg":"first"}' -q 1 -r -V 5
+sleep 0.5
+
+# Get the ULID of the first message
+FIRST_ULID=$(curl -s -X POST "$DB_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"statements\": [\"SELECT ulid FROM msg WHERE topic = '$TOPIC_DELETE_ULID' ORDER BY ulid DESC LIMIT 1\"]}" | \
+    jq -r '.[0].results.rows[0][0]')
+log_info "First message ULID: $FIRST_ULID"
+
+# Publish second message (will be retained)
+log_info "Publishing second retained message to $TOPIC_DELETE_ULID"
+mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_DELETE_ULID" -m '{"msg":"second"}' -q 1 -r -V 5
+sleep 0.5
+
+COUNT_BEFORE_DELETE=$(db_find_topic "$TOPIC_DELETE_ULID")
+log_info "Messages before targeted delete: $COUNT_BEFORE_DELETE"
+
+# Delete first message by passing ULID as user property
+log_info "Deleting first message by ULID property"
+mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_DELETE_ULID" -r -n -V 5 \
+    -D publish user-property ulid "$FIRST_ULID"
+sleep 0.5
+
+COUNT_AFTER_DELETE=$(db_find_topic "$TOPIC_DELETE_ULID")
+# Check that the second message still exists
+REMAINING_MSG=$(curl -s -X POST "$DB_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"statements\": [\"SELECT payload FROM msg WHERE topic = '$TOPIC_DELETE_ULID' LIMIT 1\"]}" | \
+    jq -r '.[0].results.rows[0][0]')
+
+if [ "$COUNT_AFTER_DELETE" -eq 1 ] && [[ "$REMAINING_MSG" == *"second"* ]]; then
+    log_pass "Targeted delete worked - first message deleted, second remains ($COUNT_BEFORE_DELETE -> $COUNT_AFTER_DELETE)"
+else
+    log_fail "Targeted delete failed - expected 1 message with 'second', got $COUNT_AFTER_DELETE messages, content: $REMAINING_MSG"
+fi
+echo ""
+
+# -----------------------------------------
+# Test 7: Delete without ULID (fallback - deletes most recent)
+# -----------------------------------------
+echo "--- Test 7: Delete without ULID (fallback) ---"
+TOPIC_DELETE_FALLBACK="data/test/delete_fallback_$TEST_ID"
+
+# Publish a retained message
+log_info "Publishing retained message to $TOPIC_DELETE_FALLBACK"
+mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_DELETE_FALLBACK" -m '{"msg":"to_delete"}' -q 1 -r -V 5
+sleep 0.5
+
+COUNT_BEFORE_FALLBACK=$(db_find_topic "$TOPIC_DELETE_FALLBACK")
+log_info "Messages before fallback delete: $COUNT_BEFORE_FALLBACK"
+
+# Delete by sending empty retained (no ULID property - uses fallback)
+log_info "Deleting message using fallback (no ULID property)"
+mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_DELETE_FALLBACK" -r -n -V 5
+sleep 0.5
+
+COUNT_AFTER_FALLBACK=$(db_find_topic "$TOPIC_DELETE_FALLBACK")
+if [ "$COUNT_AFTER_FALLBACK" -eq 0 ]; then
+    log_pass "Fallback delete worked - message deleted ($COUNT_BEFORE_FALLBACK -> $COUNT_AFTER_FALLBACK)"
+else
+    log_fail "Fallback delete failed - expected 0 messages, got $COUNT_AFTER_FALLBACK"
+fi
+echo ""
+
+# -----------------------------------------
+# Test 8: Query recent messages
+# -----------------------------------------
+echo "--- Test 8: Recent messages ---"
 log_info "Last 5 messages in database:"
 curl -s -X POST "$DB_URL" \
     -H "Content-Type: application/json" \

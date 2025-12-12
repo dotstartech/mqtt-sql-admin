@@ -11,7 +11,32 @@
     <div class="container">
         <header>
             <h1>MQTT SQL Admin</h1>
+            <button class="settings-btn" onclick="openSettings()" title="Settings">☰</button>
         </header>
+
+        <!-- Settings Modal -->
+        <div id="settingsModal" class="modal-overlay" onclick="closeSettingsOnOverlay(event)">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Settings</h2>
+                    <button class="modal-close" onclick="closeSettings()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="setting-group">
+                        <label for="tableFontSelect">Table Font</label>
+                        <select id="tableFontSelect">
+                            <option value="'Courier New', monospace">Courier New (monospace)</option>
+                            <option value="'Segoe UI', sans-serif">Segoe UI (sans-serif)</option>
+                            <option value="'Roboto', sans-serif">Roboto (sans-serif)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="closeSettings()">Cancel</button>
+                    <button class="btn-primary" onclick="saveSettings()">Save</button>
+                </div>
+            </div>
+        </div>
         <div class="tabs">
             <button class="tab active" onclick="switchTab('database')"><span id="dbStatusIcon" class="tab-status">⚫</span> Database</button>
             <button class="tab" onclick="switchTab('broker')"><span id="mqttStatusIcon" class="tab-status">⚫</span> Broker</button>
@@ -175,6 +200,7 @@
                             <th>Timestamp</th>
                             <th>Topic</th>
                             <th>Payload</th>
+                            <th>Headers</th>
                             <th>Retained</th>
                             <th>Actions</th>
                         </tr>
@@ -502,8 +528,9 @@
                 const payload = payloadIndex !== undefined ? row[payloadIndex].value : 'N/A';
                 html += makeCopyableCell('payload', payload);
                 
-                // Column 4: Headers (ULID)
-                html += `<td class="ulid">${ulid !== null && ulid !== undefined ? ulid : 'NULL'}</td>`;
+                // Column 4: Headers (ulid)
+                const headersContent = ulid !== null && ulid !== undefined ? `<span class="header-item"><span class="header-name">ulid:</span> ${ulid}</span>` : '';
+                html += `<td class="headers">${headersContent}</td>`;
                 html += '</tr>';
             });
             
@@ -622,6 +649,9 @@
 
         // Tab switching
         function switchTab(tabName) {
+            // Save active tab to cookie
+            setCookie('activeTab', tabName, 365);
+            
             // Update tab buttons
             document.querySelectorAll('.tab').forEach(tab => {
                 tab.classList.remove('active');
@@ -801,11 +831,23 @@
 
                 mqttClient.on('message', (topic, payload, packet) => {
                     const timestamp = new Date().toISOString().replace('T', ' ').substr(0, 23);
+                    
+                    // Extract ULID from MQTT v5 user properties if available
+                    let ulid = null;
+                    if (packet.properties && packet.properties.userProperties) {
+                        const userProps = packet.properties.userProperties;
+                        // userProperties can be an object with key-value pairs
+                        if (userProps.ulid) {
+                            ulid = userProps.ulid;
+                        }
+                    }
+                    
                     const message = {
                         timestamp: timestamp,
                         topic: topic,
                         payload: payload.toString(),
-                        retain: packet.retain === true
+                        retain: packet.retain === true,
+                        ulid: ulid
                     };
                     
                     // Update or add message by topic (topic is the unique key)
@@ -890,7 +932,8 @@
 
         // Delete a retained message by publishing an empty payload with retain flag
         // This clears the retained message from the broker (and triggers DB deletion via plugin)
-        function deleteRetainedMessage(topic) {
+        // If ulid is provided, it's passed as a user property for targeted deletion
+        function deleteRetainedMessage(topic, ulid) {
             if (!mqttClient || !mqttClient.connected) {
                 console.error('MQTT client not connected, cannot delete retained message');
                 alert('MQTT client not connected. Please wait for connection.');
@@ -901,13 +944,29 @@
                 return;
             }
             
+            // Build publish options with retain flag
+            const publishOptions = { 
+                retain: true, 
+                qos: 1
+            };
+            
+            // If ULID is available, pass it as a user property for targeted deletion
+            if (ulid) {
+                publishOptions.properties = {
+                    userProperties: {
+                        ulid: ulid
+                    }
+                };
+                console.log('Deleting message with ULID:', ulid);
+            }
+            
             // Publish empty payload with retain flag to clear the retained message
-            mqttClient.publish(topic, '', { retain: true, qos: 1 }, (err) => {
+            mqttClient.publish(topic, '', publishOptions, (err) => {
                 if (err) {
                     console.error('Failed to delete retained message:', err);
                     alert('Failed to delete retained message: ' + err.message);
                 } else {
-                    console.log('Deleted retained message for topic:', topic);
+                    console.log('Deleted retained message for topic:', topic, ulid ? `(ulid: ${ulid})` : '(no ulid)');
                     // Remove from local map and refresh display
                     mqttMessagesMap.delete(topic);
                     displayMqttMessages();
@@ -985,18 +1044,25 @@
                 const retainedHtml = msg.retain === true ? '<span class="retain-check">✓</span>' : '';
                 
                 // Build actions column - show trash icon only for retained messages
+                // Pass both topic and ulid (if available) for targeted deletion
+                const escapedTopic = msg.topic.replace(/'/g, "\\'");
+                const escapedUlid = msg.ulid ? msg.ulid.replace(/'/g, "\\'") : '';
                 const actionsHtml = msg.retain === true
-                    ? `<button class="delete-btn" onclick="deleteRetainedMessage('${msg.topic.replace(/'/g, "\\'")}')" title="Delete retained message">🗑️</button>`
+                    ? `<button class="delete-btn" onclick="deleteRetainedMessage('${escapedTopic}', '${escapedUlid}')" title="Delete retained message">🗑️</button>`
                     : '';
                 
                 // Build copyable cells for topic and payload
                 const topicCell = makeCopyableCell('topic', msg.topic);
                 const payloadCell = makeCopyableCell('payload', msg.payload);
                 
+                // Build headers column showing ulid if available
+                const headersHtml = msg.ulid ? `<span class="header-item"><span class="header-name">ulid:</span> ${msg.ulid}</span>` : '';
+                
                 row.innerHTML = `
                     <td class="timestamp">${msg.timestamp}</td>
                     ${topicCell}
                     ${payloadCell}
+                    <td class="headers">${headersHtml}</td>
                     <td class="retained">${retainedHtml}</td>
                     <td class="actions">${actionsHtml}</td>
                 `;
@@ -1047,7 +1113,91 @@
                     displayMqttMessages();
                 });
             }
+            
+            // Load saved font preference
+            loadFontPreference();
+            
+            // Restore active tab from cookie
+            restoreActiveTab();
         });
+
+        // Cookie helper functions
+        function setCookie(name, value, days) {
+            const expires = new Date();
+            expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + '=';
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                let cookie = cookies[i].trim();
+                if (cookie.indexOf(nameEQ) === 0) {
+                    return decodeURIComponent(cookie.substring(nameEQ.length));
+                }
+            }
+            return null;
+        }
+
+        // Restore active tab from cookie
+        function restoreActiveTab() {
+            const savedTab = getCookie('activeTab');
+            if (savedTab && ['database', 'broker', 'acl'].includes(savedTab)) {
+                // Find and click the corresponding tab button
+                const tabs = document.querySelectorAll('.tab');
+                tabs.forEach(tab => {
+                    if (tab.textContent.toLowerCase().includes(savedTab)) {
+                        tab.click();
+                    }
+                });
+            }
+        }
+
+        // Settings Modal Functions
+        function openSettings() {
+            const modal = document.getElementById('settingsModal');
+            const fontSelect = document.getElementById('tableFontSelect');
+            
+            // Load current font preference from cookie
+            const savedFont = getCookie('tableFont') || "'Courier New', monospace";
+            fontSelect.value = savedFont;
+            
+            modal.classList.add('active');
+        }
+
+        function closeSettings() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.remove('active');
+        }
+
+        function closeSettingsOnOverlay(event) {
+            if (event.target.classList.contains('modal-overlay')) {
+                closeSettings();
+            }
+        }
+
+        function saveSettings() {
+            const fontSelect = document.getElementById('tableFontSelect');
+            const selectedFont = fontSelect.value;
+            
+            // Save to cookie (expires in 1 year)
+            setCookie('tableFont', selectedFont, 365);
+            
+            // Apply font to all tables
+            applyTableFont(selectedFont);
+            
+            closeSettings();
+        }
+
+        function applyTableFont(fontFamily) {
+            document.documentElement.style.setProperty('--table-font', fontFamily);
+        }
+
+        function loadFontPreference() {
+            const savedFont = getCookie('tableFont') || "'Courier New', monospace";
+            applyTableFont(savedFont);
+        }
     </script>
 </body>
 </html>

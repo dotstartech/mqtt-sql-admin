@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <time.h>
 #include <sys/time.h>
 #include <sys/syscall.h>
@@ -597,22 +598,67 @@ static int on_message_callback(int event, void *event_data, void *userdata) {
 
     // Check if this is a delete operation (empty retained message)
     if (ed->retain && ed->payloadlen == 0) {
-        // Delete only the LAST (most recent) message for this topic from database
-        // This preserves message history - only the currently retained message is removed
-        if (delete_stmt != NULL) {
-            char *topic = strdup(ed->topic);
-            sqlite3_bind_text(delete_stmt, 1, topic, -1, SQLITE_STATIC);
+        // Try to extract ULID from incoming message properties
+        char *prop_name = NULL;
+        char *prop_value = NULL;
+        char *target_ulid = NULL;
+        const mosquitto_property *prop = ed->properties;
+        bool skip_first = false;
+        
+        // Iterate through user properties to find "ulid"
+        while ((prop = mosquitto_property_read_string_pair(prop, MQTT_PROP_USER_PROPERTY, 
+                                                           &prop_name, &prop_value, skip_first)) != NULL) {
+            if (prop_name != NULL && strcmp(prop_name, "ulid") == 0 && prop_value != NULL) {
+                target_ulid = strdup(prop_value);
+                mosquitto_log_printf(MOSQ_LOG_DEBUG, "Found ULID in properties: %s", target_ulid);
+            }
+            // Free the strings allocated by mosquitto_property_read_string_pair
+            if (prop_name) { free(prop_name); prop_name = NULL; }
+            if (prop_value) { free(prop_value); prop_value = NULL; }
+            
+            if (target_ulid != NULL) break;  // Found what we need
+            
+            // For next iteration, skip the property we just read
+            skip_first = true;
+        }
+        
+        // If no ULID in properties, fall back to deleting the most recent
+        if (target_ulid == NULL) {
+            // Query for the most recent ULID for this topic
+            sqlite3_stmt *find_stmt = NULL;
+            int rc = sqlite3_prepare_v2(msg_db,
+                "SELECT ulid FROM msg WHERE topic = ?1 ORDER BY ulid DESC LIMIT 1",
+                -1, &find_stmt, 0);
+            if (rc == SQLITE_OK) {
+                sqlite3_bind_text(find_stmt, 1, ed->topic, -1, SQLITE_STATIC);
+                if (sqlite3_step(find_stmt) == SQLITE_ROW) {
+                    target_ulid = strdup((const char *)sqlite3_column_text(find_stmt, 0));
+                    mosquitto_log_printf(MOSQ_LOG_DEBUG, "Fallback: found most recent ULID: %s", target_ulid);
+                }
+                sqlite3_finalize(find_stmt);
+            }
+        }
+        
+        // Perform the delete if we have a target ULID
+        if (target_ulid != NULL && delete_stmt != NULL) {
+            sqlite3_bind_text(delete_stmt, 1, ed->topic, -1, SQLITE_STATIC);
+            sqlite3_bind_text(delete_stmt, 2, target_ulid, -1, SQLITE_STATIC);
             
             int rc = sqlite3_step(delete_stmt);
             if (rc != SQLITE_DONE) {
-                mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to delete retained message for topic %s: %s", topic, sqlite3_errmsg(msg_db));
+                mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to delete message for topic %s, ulid %s: %s", 
+                                    ed->topic, target_ulid, sqlite3_errmsg(msg_db));
             } else {
                 int changes = sqlite3_changes(msg_db);
-                mosquitto_log_printf(MOSQ_LOG_INFO, "Deleted %d retained message for topic: %s", changes, topic);
+                mosquitto_log_printf(MOSQ_LOG_INFO, "Deleted %d message for topic: %s (ulid: %s)", 
+                                    changes, ed->topic, target_ulid);
             }
             sqlite3_reset(delete_stmt);
-            free(topic);
+            free(target_ulid);
+        } else if (target_ulid == NULL) {
+            mosquitto_log_printf(MOSQ_LOG_WARNING, "No message found to delete for topic: %s", ed->topic);
         }
+        
         // Still add ULID property for consistency
         return mosquitto_property_add_string_pair(&ed->properties, MQTT_PROP_USER_PROPERTY, "ulid", ulid);
     }
@@ -682,9 +728,9 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
 			}
 
             // Prepare delete statement for clearing retained messages
-            // Only deletes the MOST RECENT message for the topic (preserves history)
+            // Deletes by topic AND ulid when ULID is known from message properties
             rc = sqlite3_prepare_v2(msg_db, 
-                "DELETE FROM msg WHERE ulid = (SELECT ulid FROM msg WHERE topic = ?1 ORDER BY ulid DESC LIMIT 1)", 
+                "DELETE FROM msg WHERE topic = ?1 AND ulid = ?2", 
                 -1, &delete_stmt, 0);
             if (rc != SQLITE_OK) {
                 mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to prepare delete statement: %s", sqlite3_errmsg(msg_db));

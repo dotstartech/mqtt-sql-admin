@@ -1,8 +1,20 @@
 #!/bin/bash
 # Build Docker image for mqtt-sql-admin
 # Tags the image with both the version from msa.properties and 'latest'
+# Usage: ./build.sh [--no-cache]
 
 set -e
+
+# Parse arguments
+NO_CACHE=""
+for arg in "$@"; do
+    case $arg in
+        --no-cache)
+            NO_CACHE="--no-cache"
+            shift
+            ;;
+    esac
+done
 
 # Get the directory where the script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,9 +36,12 @@ fi
 IMAGE_NAME="mqtt-sql-admin"
 
 echo "Building $IMAGE_NAME version $VERSION..."
+if [[ -n "$NO_CACHE" ]]; then
+    echo "  (using --no-cache)"
+fi
 
 # Build and tag with version
-docker build -t "$IMAGE_NAME:$VERSION" -t "$IMAGE_NAME:latest" -f "$PROJECT_DIR/docker/Dockerfile" "$PROJECT_DIR"
+docker build $NO_CACHE -t "$IMAGE_NAME:$VERSION" -t "$IMAGE_NAME:latest" -f "$PROJECT_DIR/docker/Dockerfile" "$PROJECT_DIR"
 
 echo ""
 echo "Successfully built:"

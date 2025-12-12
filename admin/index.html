@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MQTT SQL Admin</title>
+    <link rel="icon" type="image/png" href="/admin/logo.png">
     <link rel="stylesheet" href="/admin/styles.css">
     <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 </head>
@@ -11,29 +12,57 @@
     <div class="container">
         <header>
             <h1>MQTT SQL Admin</h1>
-            <button class="settings-btn" onclick="openSettings()" title="Settings">☰</button>
-        </header>
-
-        <!-- Settings Modal -->
-        <div id="settingsModal" class="modal-overlay" onclick="closeSettingsOnOverlay(event)">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>Settings</h2>
-                    <button class="modal-close" onclick="closeSettings()">✕</button>
-                </div>
-                <div class="modal-body">
-                    <div class="setting-group">
-                        <label for="tableFontSelect">Table Font</label>
-                        <select id="tableFontSelect">
-                            <option value="'Courier New', monospace">Courier New (monospace)</option>
-                            <option value="'Segoe UI', sans-serif">Segoe UI (sans-serif)</option>
-                            <option value="'Roboto', sans-serif">Roboto (sans-serif)</option>
-                        </select>
+            <div class="settings-wrapper">
+                <button class="settings-btn" onclick="toggleSettingsMenu()" title="Settings">☰</button>
+                <!-- Settings Dropdown Menu -->
+                <div id="settingsMenu" class="settings-menu">
+                    <div class="menu-group">
+                        <div class="menu-group-label">Font</div>
+                        <div class="menu-item" onclick="selectFont(&quot;'Courier New', monospace&quot;)">
+                            <span class="menu-check" data-font="'Courier New', monospace">✓</span>
+                            Courier New
+                        </div>
+                        <div class="menu-item" onclick="selectFont(&quot;'Segoe UI', sans-serif&quot;)">
+                            <span class="menu-check" data-font="'Segoe UI', sans-serif">✓</span>
+                            Segoe UI
+                        </div>
+                        <div class="menu-item" onclick="selectFont(&quot;'Roboto', sans-serif&quot;)">
+                            <span class="menu-check" data-font="'Roboto', sans-serif">✓</span>
+                            Roboto
+                        </div>
+                    </div>
+                    <div class="menu-separator"></div>
+                    <div class="menu-item" onclick="openAboutModal()">
+                        About
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn-secondary" onclick="closeSettings()">Cancel</button>
-                    <button class="btn-primary" onclick="saveSettings()">Save</button>
+            </div>
+        </header>
+
+        <!-- About Modal -->
+        <div id="aboutModal" class="modal-overlay" onclick="closeAboutOnOverlay(event)">
+            <div class="modal-content about-modal">
+                <div class="modal-header">
+                    <h2>MQTT SQL Admin</h2>
+                    <button class="modal-close" onclick="closeAboutModal()">✕</button>
+                </div>
+                <div class="modal-body about-body">
+                    <div class="about-logo"><img src="/admin/logo.png" alt="dotStar Technologies"></div>
+                    <div class="about-info">
+                        <p>A web-based admin interface for MQTT message persistence with libSQL</p>
+                    </div>
+                    <div class="about-version">Version 0.2.0</div>
+                    <div class="about-separator"></div>
+                    <div class="about-row">
+                        <span class="about-label">GitHub:</span>
+                        <a href="https://github.com/dotstartech/mqtt-sql-admin" target="_blank" class="about-link">github.com/dotstartech/mqtt-sql-admin</a>
+                    </div>
+                    <div class="about-row">
+                        <span class="about-label">License:</span>
+                        <span class="about-value">Apache License 2.0</span>
+                    </div>
+                    <div class="about-separator"></div>
+                    <div class="about-copyright">© 2025 dotStar Technologies B.V.</div>
                 </div>
             </div>
         </div>
@@ -1154,40 +1183,80 @@
             }
         }
 
-        // Settings Modal Functions
-        function openSettings() {
-            const modal = document.getElementById('settingsModal');
-            const fontSelect = document.getElementById('tableFontSelect');
+        // Settings Menu Functions
+        function toggleSettingsMenu() {
+            const menu = document.getElementById('settingsMenu');
+            const isOpen = menu.classList.contains('active');
             
-            // Load current font preference from cookie
-            const savedFont = getCookie('tableFont') || "'Courier New', monospace";
-            fontSelect.value = savedFont;
-            
-            modal.classList.add('active');
-        }
-
-        function closeSettings() {
-            const modal = document.getElementById('settingsModal');
-            modal.classList.remove('active');
-        }
-
-        function closeSettingsOnOverlay(event) {
-            if (event.target.classList.contains('modal-overlay')) {
-                closeSettings();
+            if (isOpen) {
+                closeSettingsMenu();
+            } else {
+                // Update checkmarks based on current font
+                updateFontCheckmarks();
+                menu.classList.add('active');
+                
+                // Close menu when clicking outside
+                setTimeout(() => {
+                    document.addEventListener('click', closeSettingsMenuOnClickOutside);
+                }, 0);
             }
         }
 
-        function saveSettings() {
-            const fontSelect = document.getElementById('tableFontSelect');
-            const selectedFont = fontSelect.value;
+        function closeSettingsMenu() {
+            const menu = document.getElementById('settingsMenu');
+            menu.classList.remove('active');
+            document.removeEventListener('click', closeSettingsMenuOnClickOutside);
+        }
+
+        function closeSettingsMenuOnClickOutside(event) {
+            const menu = document.getElementById('settingsMenu');
+            const btn = document.querySelector('.settings-btn');
+            if (!menu.contains(event.target) && !btn.contains(event.target)) {
+                closeSettingsMenu();
+            }
+        }
+
+        function updateFontCheckmarks() {
+            const currentFont = getCookie('tableFont') || "'Courier New', monospace";
+            document.querySelectorAll('.menu-check').forEach(check => {
+                if (check.dataset.font === currentFont) {
+                    check.classList.add('visible');
+                } else {
+                    check.classList.remove('visible');
+                }
+            });
+        }
+
+        function selectFont(fontFamily) {
+            // Save to cookie
+            setCookie('tableFont', fontFamily, 365);
             
-            // Save to cookie (expires in 1 year)
-            setCookie('tableFont', selectedFont, 365);
+            // Apply font
+            applyTableFont(fontFamily);
             
-            // Apply font to all tables
-            applyTableFont(selectedFont);
+            // Update checkmarks
+            updateFontCheckmarks();
             
-            closeSettings();
+            // Close menu
+            closeSettingsMenu();
+        }
+
+        // About Modal Functions
+        function openAboutModal() {
+            closeSettingsMenu();
+            const modal = document.getElementById('aboutModal');
+            modal.classList.add('active');
+        }
+
+        function closeAboutModal() {
+            const modal = document.getElementById('aboutModal');
+            modal.classList.remove('active');
+        }
+
+        function closeAboutOnOverlay(event) {
+            if (event.target.classList.contains('modal-overlay')) {
+                closeAboutModal();
+            }
         }
 
         function applyTableFont(fontFamily) {

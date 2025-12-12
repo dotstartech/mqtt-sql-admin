@@ -31,6 +31,51 @@ The `dynsec.json` file defines the Mosquitto dynamic security configuration with
 
 To enable TLS termination inside the Mosquitto broker, mount your TLS certificate and key to `/mosquitto/security/` (e.g., `server.crt` and `server.key`) and uncomment the `certfile`/`keyfile` lines in [`mosquitto/config/mosquitto.conf`](mosquitto/config/mosquitto.conf). For mutual TLS (mTLS) with client certificates, also configure the `cafile` and `require_certificate` options.
 
+## SQL Plugin Configuration
+
+The SQL plugin persists MQTT messages to a libSQL database. It can be configured via `mosquitto.conf` with the following options:
+
+### Plugin Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `plugin_opt_exclude_topics` | Comma-separated list of topic patterns to exclude from persistence. Supports MQTT wildcards (`+` and `#`). | _(none)_ |
+| `plugin_opt_batch_size` | Number of messages to accumulate before flushing to the database. | `100` |
+| `plugin_opt_flush_interval` | Maximum time in milliseconds between database flushes. | `50` |
+
+### Example Configuration
+
+```properties
+plugin /usr/lib/sql_plugin.so
+# Exclude command topics from persistence
+plugin_opt_exclude_topics cmd/#,+/test/exclude/#
+# Batch insert settings
+plugin_opt_batch_size 100
+plugin_opt_flush_interval 50
+```
+
+### Performance Tuning
+
+The batch insert mechanism significantly improves throughput by reducing HTTP round-trips to the database. Tune the parameters based on your workload:
+
+**Lower latency** (for real-time applications):
+```properties
+plugin_opt_batch_size 25
+plugin_opt_flush_interval 20
+```
+
+**Higher throughput** (for high-volume IoT workloads):
+```properties
+plugin_opt_batch_size 200
+plugin_opt_flush_interval 100
+```
+
+**Balanced** (default, good for most use cases):
+```properties
+plugin_opt_batch_size 100
+plugin_opt_flush_interval 50
+```
+
 ## Acknowledgements
 
 This project uses the following open source libraries:

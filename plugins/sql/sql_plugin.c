@@ -7,6 +7,8 @@
 #include <sys/time.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <errno.h>
 
 #include "mosquitto_broker.h"
 #include "mosquitto_plugin.h"
@@ -22,6 +24,15 @@
 
 // Maximum number of exclusion patterns
 #define MAX_EXCLUDE_PATTERNS 64
+
+// Batch insert configuration (defaults, can be overridden via config)
+#define DEFAULT_BATCH_SIZE 100           // Flush when queue reaches this size
+#define DEFAULT_FLUSH_INTERVAL_MS 50     // Flush at least every 50ms
+#define MAX_QUEUE_SIZE 10000             // Maximum queue size before blocking
+
+// Configurable batch parameters
+static int batch_size = DEFAULT_BATCH_SIZE;
+static int flush_interval_ms = DEFAULT_FLUSH_INTERVAL_MS;
 
 struct ulid_generator {
     unsigned char last[16];
@@ -42,6 +53,30 @@ static sqlite3_stmt *delete_stmt = NULL;
 // Topic exclusion patterns
 static char *exclude_patterns[MAX_EXCLUDE_PATTERNS];
 static int exclude_pattern_count = 0;
+
+// Message queue entry for batch inserts
+struct msg_entry {
+    char ulid[27];
+    char *topic;
+    char *payload;
+    long int timestamp;
+    int retain;
+    int qos;
+    struct msg_entry *next;
+};
+
+// Message queue for batch processing
+static struct msg_entry *msg_queue_head = NULL;
+static struct msg_entry *msg_queue_tail = NULL;
+static int msg_queue_size = 0;
+static pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
+static pthread_t batch_thread;
+static volatile int batch_thread_running = 0;
+
+// Forward declarations
+static void flush_batch(void);
+static void *batch_worker(void *arg);
 
 // MQTT topic matching with wildcards (+ and #)
 // Returns 1 if topic matches pattern, 0 otherwise
@@ -382,6 +417,167 @@ unsigned long long ulid_generate(struct ulid_generator *g, char str[27])
     return ts;
 }
 
+// Enqueue a message for batch insert
+static void enqueue_message(const char *ulid, const char *topic, const char *payload, 
+                           size_t payloadlen, long int timestamp, int retain, int qos) {
+    struct msg_entry *entry = malloc(sizeof(struct msg_entry));
+    if (entry == NULL) {
+        mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to allocate message entry");
+        return;
+    }
+    
+    memcpy(entry->ulid, ulid, 27);
+    entry->topic = strdup(topic);
+    entry->payload = strndup(payload, payloadlen);
+    entry->timestamp = timestamp;
+    entry->retain = retain;
+    entry->qos = qos;
+    entry->next = NULL;
+    
+    if (entry->topic == NULL || entry->payload == NULL) {
+        mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to allocate message strings");
+        free(entry->topic);
+        free(entry->payload);
+        free(entry);
+        return;
+    }
+    
+    pthread_mutex_lock(&queue_mutex);
+    
+    // Add to queue
+    if (msg_queue_tail == NULL) {
+        msg_queue_head = msg_queue_tail = entry;
+    } else {
+        msg_queue_tail->next = entry;
+        msg_queue_tail = entry;
+    }
+    msg_queue_size++;
+    
+    // Signal the batch worker if queue is getting full
+    if (msg_queue_size >= batch_size) {
+        pthread_cond_signal(&queue_cond);
+    }
+    
+    pthread_mutex_unlock(&queue_mutex);
+}
+
+// Flush queued messages to database as a batch
+static void flush_batch(void) {
+    struct msg_entry *batch_head = NULL;
+    int batch_count = 0;
+    
+    pthread_mutex_lock(&queue_mutex);
+    if (msg_queue_size == 0) {
+        pthread_mutex_unlock(&queue_mutex);
+        return;
+    }
+    
+    // Take all messages from queue
+    batch_head = msg_queue_head;
+    batch_count = msg_queue_size;
+    msg_queue_head = msg_queue_tail = NULL;
+    msg_queue_size = 0;
+    pthread_mutex_unlock(&queue_mutex);
+    
+    if (batch_count == 0 || msg_db == NULL || insert_stmt == NULL) {
+        return;
+    }
+    
+    // Begin transaction for batch insert
+    char *err_msg = NULL;
+    int rc = sqlite3_exec(msg_db, "BEGIN TRANSACTION", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to begin transaction: %s", err_msg);
+        sqlite3_free(err_msg);
+        // Fall through and try individual inserts anyway
+    }
+    
+    // Insert all messages in batch
+    struct msg_entry *entry = batch_head;
+    int success_count = 0;
+    while (entry != NULL) {
+        sqlite3_bind_text(insert_stmt, 1, entry->ulid, -1, SQLITE_STATIC);
+        sqlite3_bind_text(insert_stmt, 2, entry->topic, -1, SQLITE_STATIC);
+        sqlite3_bind_text(insert_stmt, 3, entry->payload, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(insert_stmt, 4, (sqlite3_int64)entry->timestamp);
+        sqlite3_bind_int(insert_stmt, 5, entry->retain);
+        sqlite3_bind_int(insert_stmt, 6, entry->qos);
+        
+        rc = sqlite3_step(insert_stmt);
+        if (rc == SQLITE_DONE) {
+            success_count++;
+        } else {
+            mosquitto_log_printf(MOSQ_LOG_ERR, "Batch insert failed for topic %s: %s", 
+                               entry->topic, sqlite3_errmsg(msg_db));
+        }
+        sqlite3_reset(insert_stmt);
+        
+        entry = entry->next;
+    }
+    
+    // Commit transaction
+    rc = sqlite3_exec(msg_db, "COMMIT", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to commit transaction: %s", err_msg);
+        sqlite3_free(err_msg);
+    }
+    
+    mosquitto_log_printf(MOSQ_LOG_DEBUG, "Batch insert: %d/%d messages committed", 
+                        success_count, batch_count);
+    
+    // Free batch entries
+    entry = batch_head;
+    while (entry != NULL) {
+        struct msg_entry *next = entry->next;
+        free(entry->topic);
+        free(entry->payload);
+        free(entry);
+        entry = next;
+    }
+}
+
+// Background worker thread for batch processing
+static void *batch_worker(void *arg) {
+    UNUSED(arg);
+    
+    struct timespec timeout;
+    
+    mosquitto_log_printf(MOSQ_LOG_INFO, "Batch worker thread started");
+    
+    while (batch_thread_running) {
+        pthread_mutex_lock(&queue_mutex);
+        
+        // Wait for either: queue size threshold or timeout
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        timeout.tv_nsec += flush_interval_ms * 1000000L;
+        if (timeout.tv_nsec >= 1000000000L) {
+            timeout.tv_sec++;
+            timeout.tv_nsec -= 1000000000L;
+        }
+        
+        // Wait with timeout - will wake up on signal or timeout
+        while (msg_queue_size < batch_size && batch_thread_running) {
+            int rc = pthread_cond_timedwait(&queue_cond, &queue_mutex, &timeout);
+            if (rc == ETIMEDOUT) {
+                break;  // Timeout - flush whatever we have
+            }
+        }
+        
+        pthread_mutex_unlock(&queue_mutex);
+        
+        // Flush accumulated messages
+        if (batch_thread_running || msg_queue_size > 0) {
+            flush_batch();
+        }
+    }
+    
+    // Final flush on shutdown
+    flush_batch();
+    
+    mosquitto_log_printf(MOSQ_LOG_INFO, "Batch worker thread stopped");
+    return NULL;
+}
+
 static int on_message_callback(int event, void *event_data, void *userdata) {
 	struct mosquitto_evt_message *ed = event_data;
 
@@ -421,30 +617,12 @@ static int on_message_callback(int event, void *event_data, void *userdata) {
         return mosquitto_property_add_string_pair(&ed->properties, MQTT_PROP_USER_PROPERTY, "ulid", ulid);
     }
 
-    if(insert_stmt != NULL) {
-		sqlite3_bind_text(insert_stmt, 1, ulid, -1, SQLITE_STATIC);
-        
-		char *topic = strdup(ed->topic);
-		sqlite3_bind_text(insert_stmt, 2, topic, -1, SQLITE_STATIC);
-		
-		char *payload = strndup((char *)ed->payload, ed->payloadlen);
-    	sqlite3_bind_text(insert_stmt, 3, payload, -1, SQLITE_STATIC);
-
-        sqlite3_bind_int64(insert_stmt, 4, (sqlite3_int64)msEpoch);
-
-        // Store retain flag (1 = retained/persistent, 0 = transient)
-        sqlite3_bind_int(insert_stmt, 5, ed->retain ? 1 : 0);
-
-        // Store QoS level (0, 1, or 2)
-        sqlite3_bind_int(insert_stmt, 6, ed->qos);
-    	
-		sqlite3_step(insert_stmt);
-    	sqlite3_reset(insert_stmt);
-
-        mosquitto_log_printf(MOSQ_LOG_DEBUG, "Stored event: topic=%s retain=%d qos=%d payload=%s", topic, ed->retain, ed->qos, payload);
-
-        free(topic);
-        free(payload);
+    // Enqueue message for batch insert (non-blocking)
+    if (batch_thread_running) {
+        enqueue_message(ulid, ed->topic, (char *)ed->payload, ed->payloadlen, 
+                       msEpoch, ed->retain ? 1 : 0, ed->qos);
+        mosquitto_log_printf(MOSQ_LOG_DEBUG, "Enqueued: topic=%s retain=%d qos=%d", 
+                            ed->topic, ed->retain, ed->qos);
     }
 
     return mosquitto_property_add_string_pair(&ed->properties, MQTT_PROP_USER_PROPERTY, "ulid", ulid);
@@ -469,6 +647,18 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
     for (int i = 0; i < opt_count; i++) {
         if (strcmp(opts[i].key, "exclude_topics") == 0) {
             parse_exclude_patterns(opts[i].value);
+        } else if (strcmp(opts[i].key, "batch_size") == 0) {
+            int val = atoi(opts[i].value);
+            if (val > 0 && val <= MAX_QUEUE_SIZE) {
+                batch_size = val;
+                mosquitto_log_printf(MOSQ_LOG_INFO, "Batch size set to: %d", batch_size);
+            }
+        } else if (strcmp(opts[i].key, "flush_interval") == 0) {
+            int val = atoi(opts[i].value);
+            if (val > 0 && val <= 10000) {
+                flush_interval_ms = val;
+                mosquitto_log_printf(MOSQ_LOG_INFO, "Flush interval set to: %dms", flush_interval_ms);
+            }
         }
     }
 
@@ -506,6 +696,16 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
         mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to init ULID generator");
     }
 
+    // Start batch worker thread
+    batch_thread_running = 1;
+    if (pthread_create(&batch_thread, NULL, batch_worker, NULL) != 0) {
+        mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to create batch worker thread");
+        batch_thread_running = 0;
+    } else {
+        mosquitto_log_printf(MOSQ_LOG_INFO, "Batch insert enabled: size=%d, interval=%dms", 
+                            batch_size, flush_interval_ms);
+    }
+
 	mosq_pid = identifier;
 	return mosquitto_callback_register(mosq_pid, MOSQ_EVT_MESSAGE, on_message_callback, NULL, NULL);
 }
@@ -515,6 +715,13 @@ int mosquitto_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, int op
 	UNUSED(user_data);
 	UNUSED(opts);
 	UNUSED(opt_count);
+
+    // Stop batch worker thread
+    if (batch_thread_running) {
+        batch_thread_running = 0;
+        pthread_cond_signal(&queue_cond);  // Wake up the thread
+        pthread_join(batch_thread, NULL);
+    }
 
     // Free exclusion patterns
     free_exclude_patterns();

@@ -31,9 +31,17 @@
 #define DEFAULT_FLUSH_INTERVAL_MS 50     // Flush at least every 50ms
 #define MAX_QUEUE_SIZE 10000             // Maximum queue size before blocking
 
+// Data retention configuration
+#define DEFAULT_RETENTION_DAYS 0         // 0 = disabled (keep all messages)
+#define RETENTION_CHECK_INTERVAL_SEC 86400 // Check every day
+
 // Configurable batch parameters
 static int batch_size = DEFAULT_BATCH_SIZE;
 static int flush_interval_ms = DEFAULT_FLUSH_INTERVAL_MS;
+
+// Data retention parameters
+static int retention_days = DEFAULT_RETENTION_DAYS;
+static time_t last_retention_check = 0;
 
 struct ulid_generator {
     unsigned char last[16];
@@ -537,6 +545,41 @@ static void flush_batch(void) {
     }
 }
 
+// Delete messages older than retention_days
+// Uses timestamp column for efficient deletion
+static void cleanup_old_messages(void) {
+    if (retention_days <= 0 || msg_db == NULL) {
+        return;
+    }
+    
+    time_t now = time(NULL);
+    
+    // Only run cleanup periodically (every RETENTION_CHECK_INTERVAL_SEC)
+    if (now - last_retention_check < RETENTION_CHECK_INTERVAL_SEC) {
+        return;
+    }
+    last_retention_check = now;
+    
+    // Calculate cutoff timestamp (seconds since epoch)
+    time_t cutoff_timestamp = now - (retention_days * 24 * 60 * 60);
+    
+    char sql[256];
+    snprintf(sql, sizeof(sql), "DELETE FROM msg WHERE timestamp < %ld", (long)cutoff_timestamp);
+    
+    char *err_msg = NULL;
+    int rc = sqlite3_exec(msg_db, sql, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        mosquitto_log_printf(MOSQ_LOG_ERR, "Retention cleanup failed: %s", err_msg);
+        sqlite3_free(err_msg);
+    } else {
+        int deleted = sqlite3_changes(msg_db);
+        if (deleted > 0) {
+            mosquitto_log_printf(MOSQ_LOG_INFO, "Retention cleanup: deleted %d messages older than %d days", 
+                                deleted, retention_days);
+        }
+    }
+}
+
 // Background worker thread for batch processing
 static void *batch_worker(void *arg) {
     UNUSED(arg);
@@ -569,6 +612,11 @@ static void *batch_worker(void *arg) {
         // Flush accumulated messages
         if (batch_thread_running || msg_queue_size > 0) {
             flush_batch();
+        }
+        
+        // Periodically cleanup old messages (if retention is enabled)
+        if (batch_thread_running) {
+            cleanup_old_messages();
         }
     }
     
@@ -705,6 +753,16 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
                 flush_interval_ms = val;
                 mosquitto_log_printf(MOSQ_LOG_INFO, "Flush interval set to: %dms", flush_interval_ms);
             }
+        } else if (strcmp(opts[i].key, "retention_days") == 0) {
+            int val = atoi(opts[i].value);
+            if (val >= 0 && val <= 3650) {  // Max 10 years
+                retention_days = val;
+                if (retention_days > 0) {
+                    mosquitto_log_printf(MOSQ_LOG_INFO, "Data retention set to: %d days", retention_days);
+                } else {
+                    mosquitto_log_printf(MOSQ_LOG_INFO, "Data retention disabled (keeping all messages)");
+                }
+            }
         }
     }
 
@@ -722,6 +780,26 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
             mosquitto_log_printf(MOSQ_LOG_ERR, "SQL error: %s", err_msg);
 			sqlite3_free(err_msg);
 		} else {
+            // Create index on topic for faster topic-based queries
+            const char *idx_topic_sql = "CREATE INDEX IF NOT EXISTS idx_msg_topic ON msg(topic);";
+            rc = sqlite3_exec(msg_db, idx_topic_sql, NULL, 0, &err_msg);
+            if (rc != SQLITE_OK) {
+                mosquitto_log_printf(MOSQ_LOG_WARNING, "Failed to create topic index: %s", err_msg);
+                sqlite3_free(err_msg);
+            } else {
+                mosquitto_log_printf(MOSQ_LOG_INFO, "Index on topic column ensured");
+            }
+            
+            // Create index on timestamp for faster retention cleanup
+            const char *idx_ts_sql = "CREATE INDEX IF NOT EXISTS idx_msg_timestamp ON msg(timestamp);";
+            rc = sqlite3_exec(msg_db, idx_ts_sql, NULL, 0, &err_msg);
+            if (rc != SQLITE_OK) {
+                mosquitto_log_printf(MOSQ_LOG_WARNING, "Failed to create timestamp index: %s", err_msg);
+                sqlite3_free(err_msg);
+            } else {
+                mosquitto_log_printf(MOSQ_LOG_INFO, "Index on timestamp column ensured");
+            }
+            
     		rc = sqlite3_prepare_v2(msg_db, "insert into msg (ulid, topic, payload, timestamp, retain, qos) values (?1, ?2, ?3, ?4, ?5, ?6)", -1, &insert_stmt, 0);
     		if (rc != SQLITE_OK) {
                 mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to prepare insert data statement: %s", sqlite3_errmsg(msg_db));

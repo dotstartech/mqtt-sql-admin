@@ -58,6 +58,13 @@ The SQL plugin persists MQTT messages to a libSQL database. It can be configured
 | `plugin_opt_exclude_topics` | Comma-separated list of topic patterns to exclude from persistence. Supports MQTT wildcards (`+` and `#`). | _(none)_ |
 | `plugin_opt_batch_size` | Number of messages to accumulate before flushing to the database. | `100` |
 | `plugin_opt_flush_interval` | Maximum time in milliseconds between database flushes. | `50` |
+| `plugin_opt_retention_days` | Automatically delete messages older than N days. Set to `0` to disable (keep all messages). | `0` |
+
+### Database Indexes
+
+The plugin automatically creates the following indexes for optimal query performance:
+- `idx_msg_topic` - Index on the `topic` column for fast topic-based lookups
+- `idx_msg_timestamp` - Index on the `timestamp` column for efficient retention cleanup
 
 ### Example Configuration
 
@@ -68,6 +75,20 @@ plugin_opt_exclude_topics cmd/#,+/test/exclude/#
 # Batch insert settings
 plugin_opt_batch_size 100
 plugin_opt_flush_interval 50
+# Keep messages for 1 year, then automatically delete
+plugin_opt_retention_days 365
+```
+
+### Data Retention
+
+When `plugin_opt_retention_days` is set to a value greater than 0, the plugin will periodically (every hour) delete messages older than the specified number of days. This helps manage database size for long-running deployments.
+
+```properties
+# Keep messages for 90 days
+plugin_opt_retention_days 90
+
+# Disable retention (keep all messages forever)
+plugin_opt_retention_days 0
 ```
 
 ### Performance Tuning

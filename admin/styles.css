@@ -49,7 +49,7 @@ body {
     width: 100%;
     margin: 0;
     background: var(--ctp-base);
-    overflow: hidden;
+    overflow: visible;
 }
 
 header {
@@ -58,7 +58,7 @@ header {
     padding: 8px;
     text-align: center;
     position: relative;
-    z-index: 500;
+    z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -83,6 +83,8 @@ header h1 {
     background: var(--ctp-crust);
     padding: 8px 8px 0 8px;
     border-bottom: 1px solid var(--ctp-surface0);
+    position: relative;
+    z-index: 1;
 }
 
 .tab {
@@ -119,6 +121,8 @@ header h1 {
 
 .tab-content.active {
     display: block;
+    position: relative;
+    z-index: 1;
 }
 
 .controls {
@@ -632,6 +636,7 @@ td.actions {
     right: 16px;
     top: 50%;
     transform: translateY(-50%);
+    z-index: 1000;
 }
 
 .settings-btn {
@@ -745,6 +750,7 @@ td.actions {
     min-width: 320px;
     max-width: 400px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    position: relative;
 }
 
 .modal-header {
@@ -785,6 +791,25 @@ td.actions {
     text-align: center;
 }
 
+.about-modal .modal-header {
+    justify-content: flex-start;
+}
+
+.about-modal .modal-header .about-logo {
+    margin: 0;
+}
+
+.about-modal .modal-header .about-logo img {
+    max-width: 100px;
+    height: auto;
+}
+
+.about-modal .modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+}
+
 .about-body {
     padding: 24px 32px;
 }
@@ -802,7 +827,7 @@ td.actions {
     font-size: 20px;
     font-weight: 600;
     color: var(--ctp-lavender);
-    margin-bottom: 4px;
+    margin: 0 0 8px 0;
 }
 
 .about-version {

@@ -856,6 +856,7 @@ static void *batch_worker(void *arg) {
 // Extract user properties from message and format as semicolon-separated key=value string
 // Excludes headers in the exclude_headers list
 // Returns allocated string or NULL if no headers. Caller must free.
+// Optimized: single-pass with dynamic buffer growth
 static char *extract_headers(const mosquitto_property *properties) {
     // If header storage is completely disabled, return NULL
     if (headers_disabled) {
@@ -866,19 +867,56 @@ static char *extract_headers(const mosquitto_property *properties) {
         return NULL;
     }
     
-    // First pass: calculate required buffer size
-    size_t total_len = 0;
-    int header_count = 0;
+    // Start with reasonable initial capacity
+    size_t capacity = 256;
+    size_t len = 0;
+    char *headers = malloc(capacity);
+    if (headers == NULL) {
+        return NULL;
+    }
+    headers[0] = '\0';
+    
+    // Single pass: build header string with dynamic buffer growth
     const mosquitto_property *prop = properties;
     char *prop_name = NULL;
     char *prop_value = NULL;
     bool skip_first = false;
+    int header_count = 0;
     
     while ((prop = mosquitto_property_read_string_pair(prop, MQTT_PROP_USER_PROPERTY, 
                                                        &prop_name, &prop_value, skip_first)) != NULL) {
         if (prop_name != NULL && prop_value != NULL && !is_header_excluded(prop_name)) {
-            // key=value; format (add 2 for '=' and ';')
-            total_len += strlen(prop_name) + strlen(prop_value) + 2;
+            size_t name_len = strlen(prop_name);
+            size_t value_len = strlen(prop_value);
+            // Need: name + '=' + value + ';' (or '\0' for last)
+            size_t needed = name_len + value_len + 2;
+            
+            // Grow buffer if needed
+            if (len + needed + 1 > capacity) {
+                capacity = (len + needed + 1) * 2;
+                char *new_headers = realloc(headers, capacity);
+                if (new_headers == NULL) {
+                    free(headers);
+                    free(prop_name);
+                    free(prop_value);
+                    return NULL;
+                }
+                headers = new_headers;
+            }
+            
+            // Append separator if not first
+            if (header_count > 0) {
+                headers[len++] = ';';
+            }
+            
+            // Append name=value using memcpy (faster than strcat)
+            memcpy(headers + len, prop_name, name_len);
+            len += name_len;
+            headers[len++] = '=';
+            memcpy(headers + len, prop_value, value_len);
+            len += value_len;
+            headers[len] = '\0';
+            
             header_count++;
         }
         if (prop_name) { free(prop_name); prop_name = NULL; }
@@ -887,35 +925,8 @@ static char *extract_headers(const mosquitto_property *properties) {
     }
     
     if (header_count == 0) {
+        free(headers);
         return NULL;
-    }
-    
-    // Allocate buffer (total_len already includes space for separators, just need null terminator)
-    char *headers = malloc(total_len + 1);
-    if (headers == NULL) {
-        return NULL;
-    }
-    headers[0] = '\0';
-    
-    // Second pass: build the header string
-    prop = properties;
-    skip_first = false;
-    int current = 0;
-    
-    while ((prop = mosquitto_property_read_string_pair(prop, MQTT_PROP_USER_PROPERTY, 
-                                                       &prop_name, &prop_value, skip_first)) != NULL) {
-        if (prop_name != NULL && prop_value != NULL && !is_header_excluded(prop_name)) {
-            if (current > 0) {
-                strcat(headers, ";");
-            }
-            strcat(headers, prop_name);
-            strcat(headers, "=");
-            strcat(headers, prop_value);
-            current++;
-        }
-        if (prop_name) { free(prop_name); prop_name = NULL; }
-        if (prop_value) { free(prop_value); prop_value = NULL; }
-        skip_first = true;
     }
     
     return headers;
@@ -1053,7 +1064,23 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
 	} else {
         mosquitto_log_printf(MOSQ_LOG_INFO, "Opened database: /mosquitto/data/dbs/default/data");
 
-		char *err_msg = 0;
+        // Enable WAL mode for better concurrent read/write performance
+        char *err_msg = 0;
+        rc = sqlite3_exec(msg_db, "PRAGMA journal_mode=WAL", NULL, 0, &err_msg);
+        if (rc != SQLITE_OK) {
+            mosquitto_log_printf(MOSQ_LOG_WARNING, "Failed to enable WAL mode: %s", err_msg);
+            sqlite3_free(err_msg);
+        } else {
+            mosquitto_log_printf(MOSQ_LOG_INFO, "SQLite WAL mode enabled");
+        }
+        
+        // Set synchronous=NORMAL for better performance (safe with WAL)
+        rc = sqlite3_exec(msg_db, "PRAGMA synchronous=NORMAL", NULL, 0, &err_msg);
+        if (rc != SQLITE_OK) {
+            mosquitto_log_printf(MOSQ_LOG_WARNING, "Failed to set synchronous=NORMAL: %s", err_msg);
+            sqlite3_free(err_msg);
+        }
+
 		const char *sql = "create table if not exists msg(ulid text primary key, topic text not null, payload text not null, retain integer not null default 0, qos integer not null default 0, headers text);";
 		rc = sqlite3_exec(msg_db, sql, NULL, 0, &err_msg);
 		if (rc != SQLITE_OK) {

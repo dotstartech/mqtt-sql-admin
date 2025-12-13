@@ -219,7 +219,7 @@ calculate_latency() {
     echo "  P99:      ${p99}ms"
     echo ""
     echo "  Note: Latency includes MQTT publish, broker processing,"
-    echo "        plugin HTTP insert to sqld, and database write."
+    echo "        plugin insert to sqld using C API, and database write."
 }
 
 # Generate unique test ID

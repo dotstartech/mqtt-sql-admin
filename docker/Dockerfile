@@ -66,6 +66,11 @@ RUN curl -o /tmp/mosq.tar.gz https://mosquitto.org/files/source/mosquitto-${VERS
 RUN curl --proto '=https' --tlsv1.2 -LsSf https://github.com/tursodatabase/libsql/releases/download/libsql-server-v0.24.32/libsql-server-installer.sh | sh \
     && mv /root/.cargo/bin/sqld /build/sqld
 
+# Build su-exec (lightweight alternative to gosu, no Go dependency)
+RUN curl -fsSL https://raw.githubusercontent.com/ncopa/su-exec/master/su-exec.c -o /tmp/su-exec.c \
+    && gcc -Wall -Werror -g -o /build/su-exec /tmp/su-exec.c \
+    && strip /build/su-exec
+
 FROM debian:trixie-slim
 
 LABEL maintainer="dotStar Technologies" \
@@ -81,7 +86,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl3t64 \
         libcjson1 \
         libsqlite3-0 \
-        gosu \
         nginx-light \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid ${GID} admin \
@@ -96,6 +100,7 @@ COPY --from=builder /build/mosq/src/mosquitto /usr/sbin/mosquitto
 COPY --from=builder /build/mosq/plugins/dynamic-security/mosquitto_dynamic_security.so /usr/lib/mosquitto_dynamic_security.so
 COPY --from=builder /build/mosq/plugins/sql/sql_plugin.so /usr/lib/sql_plugin.so
 COPY --from=builder /build/sqld /usr/local/bin/sqld
+COPY --from=builder /build/su-exec /usr/local/bin/su-exec
 
 # Copy configuration and scripts
 COPY mosquitto/config/mosquitto.conf /mosquitto/config/mosquitto.conf

@@ -65,7 +65,7 @@ if [ "$user" = '0' ]; then
 	fi
 	
 	# Switch to admin user and execute the command
-	exec gosu admin "$@"
+	exec su-exec admin "$@"
 else
 	# If not running as root, just execute the command
 	exec "$@"

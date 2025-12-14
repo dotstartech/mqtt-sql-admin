@@ -17,7 +17,8 @@ let lastQueryResult = null;
 let mqttClient = null;
 // Map with topic as key - each topic has only one entry (latest message)
 let mqttMessagesMap = new Map();
-const MAX_TOPICS = 500;
+const MAX_TOPICS = 5000;
+const MAX_DB_RESULTS = 5000;  // Maximum rows to return from database queries
 const MQTT_TOPIC = '#';  // Subscribe to all topics
 
 // =============================================================================
@@ -295,10 +296,28 @@ async function loadMessages() {
 }
 
 async function executeCustomQuery() {
-    const query = document.getElementById('customQuery').value.trim();
+    let query = document.getElementById('customQuery').value.trim();
     if (!query) {
         showMessage('Please enter a SQL query', 'error');
         return;
+    }
+
+    // Enforce maximum result limit to prevent browser memory issues
+    // Check if query already has a LIMIT clause
+    const hasLimit = /\bLIMIT\s+\d+/i.test(query);
+    let limitEnforced = false;
+    
+    if (!hasLimit) {
+        // Append LIMIT if not present
+        query = query.replace(/;\s*$/, '') + ` LIMIT ${MAX_DB_RESULTS}`;
+        limitEnforced = true;
+    } else {
+        // Check if existing limit exceeds MAX_DB_RESULTS
+        const limitMatch = query.match(/\bLIMIT\s+(\d+)/i);
+        if (limitMatch && parseInt(limitMatch[1]) > MAX_DB_RESULTS) {
+            query = query.replace(/\bLIMIT\s+\d+/i, `LIMIT ${MAX_DB_RESULTS}`);
+            limitEnforced = true;
+        }
     }
 
     // Turn off auto-refresh if it's currently enabled
@@ -313,7 +332,7 @@ async function executeCustomQuery() {
     
     try {
         const result = await executeSQL(query);
-        displayResults(result);
+        displayResults(result, limitEnforced);
     } catch (error) {
         showMessage(`Error: ${error.message}`, 'error');
         document.getElementById('results').innerHTML = '';
@@ -339,7 +358,7 @@ function hasResultChanged(newResult) {
     }
 }
 
-function displayResults(data) {
+function displayResults(data, limitEnforced = false) {
     const resultsDiv = document.getElementById('results');
     if (!data.result) {
         resultsDiv.innerHTML = '<div class="no-results">No results returned</div>';
@@ -350,6 +369,12 @@ function displayResults(data) {
     if (!result.rows || result.rows.length === 0) {
         resultsDiv.innerHTML = '<div class="no-results">No messages found</div>';
         return;
+    }
+
+    // Show warning if limit was enforced and results are at the limit
+    let warningHtml = '';
+    if (limitEnforced && result.rows.length >= MAX_DB_RESULTS) {
+        warningHtml = `<div class="limit-warning">⚠️ Results limited to ${MAX_DB_RESULTS} rows. Add a more specific WHERE clause or use a smaller LIMIT.</div>`;
     }
 
     // Create a map of column indices (case-insensitive)
@@ -393,7 +418,7 @@ function displayResults(data) {
     });
     
     html += '</tbody></table>';
-    resultsDiv.innerHTML = html;
+    resultsDiv.innerHTML = warningHtml + html;
 }
 
 function showLoading() {
@@ -715,11 +740,23 @@ async function initMqttConnection() {
             // Update or add message by topic (topic is the unique key)
             mqttMessagesMap.set(topic, message);
             
-            // If we exceed MAX_TOPICS, remove oldest entries
-            // Map maintains insertion order, so we remove from the beginning
+            // If we exceed MAX_TOPICS, remove the oldest message by timestamp
+            // This ensures newer messages are never pushed out by older ones
             if (mqttMessagesMap.size > MAX_TOPICS) {
-                const firstKey = mqttMessagesMap.keys().next().value;
-                mqttMessagesMap.delete(firstKey);
+                let oldestKey = null;
+                let oldestTime = Infinity;
+                
+                for (const [key, msg] of mqttMessagesMap) {
+                    const msgTime = new Date(msg.timestamp).getTime();
+                    if (msgTime < oldestTime) {
+                        oldestTime = msgTime;
+                        oldestKey = key;
+                    }
+                }
+                
+                if (oldestKey) {
+                    mqttMessagesMap.delete(oldestKey);
+                }
             }
             
             displayMqttMessages();

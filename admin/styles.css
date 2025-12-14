@@ -487,6 +487,16 @@ td:first-child {
     font-size: 16px;
 }
 
+.limit-warning {
+    background: var(--ctp-surface0);
+    border: 1px solid var(--ctp-yellow);
+    border-radius: 4px;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    color: var(--ctp-yellow);
+    font-size: 14px;
+}
+
 /* Broker tab styles */
 .broker-section {
     margin-bottom: 24px;

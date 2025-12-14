@@ -1,9 +1,7 @@
 # libSQL HTTP API - curl Commands
 
 ## Overview
-The libSQL database (sqld) is accessible via HTTP API:
-- **Direct access**: `http://127.0.0.1:8000` (sqld port)
-- **Via nginx proxy**: `http://127.0.0.1:8080/db-admin` (recommended)
+The libSQL database (sqld) is accessible via HTTP API on port 8000 `http://127.0.0.1:8000`
 
 **Note**: Use `127.0.0.1` instead of `localhost` to avoid IPv6 connection issues. Alternatively, use `curl -4` to force IPv4.
 

@@ -243,6 +243,9 @@ async function loadStats() {
 }
 
 async function loadMessages() {
+    // Save filter preferences to cookies
+    saveFilterPreferences();
+    
     // Clear custom query field to indicate we're using filters now
     document.getElementById('customQuery').value = '';
     
@@ -417,7 +420,7 @@ function showMessage(text, type) {
     
     setTimeout(() => {
         messageDiv.style.display = 'none';
-    }, 5000);
+    }, 3000);
 }
 
 function clearFilter() {
@@ -464,12 +467,12 @@ function startAutoRefresh() {
         clearInterval(autoRefreshInterval);
     }
     
-    // Set up new interval - refresh every 5 seconds
+    // Set up new interval - refresh every 3 seconds
     autoRefreshInterval = setInterval(() => {
         if (isAutoRefreshEnabled && document.getElementById('database-tab').classList.contains('active')) {
             loadMessages();
         }
-    }, 5000);
+    }, 3000);
 }
 
 function stopAutoRefresh() {
@@ -658,27 +661,29 @@ async function initMqttConnection() {
             username: username,
             password: password,
             clean: true,
-            reconnectPeriod: 5000,
+            reconnectPeriod: 3000,
             protocolVersion: 5,  // MQTT v5 for retain-as-published support
         });
 
         mqttClient.on('connect', () => {
             console.log('MQTT connected');
             
-            // Subscribe to topic with Retain As Published (rap) option
-            mqttClient.subscribe(MQTT_TOPIC, { rap: true }, (err) => {
+            // Subscribe to topic with:
+            // - rap: Retain As Published - preserve retain flag on forwarded messages
+            // - rh: Retain Handling 0 - send retained messages at subscribe time
+            // - qos: Quality of Service level
+            mqttClient.subscribe(MQTT_TOPIC, { rap: true, rh: 0, qos: 1 }, (err, granted) => {
                 if (err) {
                     console.error('Subscribe error:', err);
                     updateMqttStatus('Error', '❌', 'var(--ctp-red)');
                 } else {
-                    console.log('Subscribed to:', MQTT_TOPIC);
+                    console.log('Subscribed to:', MQTT_TOPIC, 'granted:', granted);
                     updateMqttStatus(`Connected`, '🟢', 'var(--ctp-green)');
                 }
             });
         });
 
         mqttClient.on('message', (topic, payload, packet) => {
-            const timestamp = new Date().toISOString().replace('T', ' ').substr(0, 23);
             const payloadStr = payload.toString();
             
             // Empty payload with retain flag means the retained message is being cleared
@@ -700,6 +705,11 @@ async function initMqttConnection() {
                     ulid = userProps.ulid;
                 }
             }
+            
+            // Derive timestamp from ULID (broker processing time) or fall back to current time
+            const timestamp = ulid 
+                ? extractTimestampFromULID(ulid) 
+                : new Date().toISOString().replace('T', ' ').substr(0, 23);
             
             const message = {
                 timestamp: timestamp,
@@ -967,8 +977,8 @@ function toggleSettingsMenu() {
     if (isOpen) {
         closeSettingsMenu();
     } else {
-        // Update checkmarks based on current font
-        updateFontCheckmarks();
+        // Update select based on current font
+        updateFontSelect();
         menu.classList.add('active');
         
         // Close menu when clicking outside
@@ -992,15 +1002,12 @@ function closeSettingsMenuOnClickOutside(event) {
     }
 }
 
-function updateFontCheckmarks() {
+function updateFontSelect() {
     const currentFont = getCookie('tableFont') || "'JetBrains Mono', monospace";
-    document.querySelectorAll('.menu-check').forEach(check => {
-        if (check.dataset.font === currentFont) {
-            check.classList.add('visible');
-        } else {
-            check.classList.remove('visible');
-        }
-    });
+    const fontSelect = document.getElementById('fontSelect');
+    if (fontSelect) {
+        fontSelect.value = currentFont;
+    }
 }
 
 function selectFont(fontFamily) {
@@ -1010,11 +1017,8 @@ function selectFont(fontFamily) {
     // Apply font
     applyTableFont(fontFamily);
     
-    // Update checkmarks
-    updateFontCheckmarks();
-    
-    // Close menu
-    closeSettingsMenu();
+    // Update select value
+    updateFontSelect();
 }
 
 function applyTableFont(fontFamily) {
@@ -1024,6 +1028,117 @@ function applyTableFont(fontFamily) {
 function loadFontPreference() {
     const savedFont = getCookie('tableFont') || "'JetBrains Mono', monospace";
     applyTableFont(savedFont);
+}
+
+// =============================================================================
+// Theme Toggle Functions
+// =============================================================================
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+}
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    setCookie('theme', theme, 365);
+    updateThemeToggle(theme);
+}
+
+function updateThemeToggle(theme) {
+    const slider = document.getElementById('themeSlider');
+    const darkLabel = document.getElementById('themeLabelDark');
+    const lightLabel = document.getElementById('themeLabelLight');
+    
+    if (slider) {
+        if (theme === 'light') {
+            slider.classList.add('light');
+        } else {
+            slider.classList.remove('light');
+        }
+    }
+    
+    if (darkLabel && lightLabel) {
+        if (theme === 'light') {
+            darkLabel.classList.remove('active');
+            lightLabel.classList.add('active');
+        } else {
+            darkLabel.classList.add('active');
+            lightLabel.classList.remove('active');
+        }
+    }
+}
+
+function loadThemePreference() {
+    const savedTheme = getCookie('theme') || 'dark';
+    setTheme(savedTheme);
+}
+
+// =============================================================================
+// Filter Preferences Functions
+// =============================================================================
+
+function saveFilterPreferences() {
+    // Database tab filters
+    const topicFilter = document.getElementById('topicFilter');
+    const timeFilter = document.getElementById('timeFilter');
+    const limit = document.getElementById('limit');
+    const autoRefresh = document.getElementById('autoRefreshCheckbox');
+    
+    if (topicFilter) setCookie('dbTopicFilter', topicFilter.value, 365);
+    if (timeFilter) setCookie('dbTimeFilter', timeFilter.value, 365);
+    if (limit) setCookie('dbLimit', limit.value, 365);
+    if (autoRefresh) setCookie('dbAutoRefresh', autoRefresh.checked ? '1' : '0', 365);
+}
+
+function saveBrokerFilterPreferences() {
+    // Broker tab filters
+    const topicFilter = document.getElementById('brokerTopicFilter');
+    const timeFilter = document.getElementById('brokerTimeFilter');
+    const limit = document.getElementById('brokerLimit');
+    
+    if (topicFilter) setCookie('brokerTopicFilter', topicFilter.value, 365);
+    if (timeFilter) setCookie('brokerTimeFilter', timeFilter.value, 365);
+    if (limit) setCookie('brokerLimit', limit.value, 365);
+}
+
+function loadFilterPreferences() {
+    // Database tab filters
+    const topicFilter = document.getElementById('topicFilter');
+    const timeFilter = document.getElementById('timeFilter');
+    const limit = document.getElementById('limit');
+    const autoRefresh = document.getElementById('autoRefreshCheckbox');
+    
+    const savedTopicFilter = getCookie('dbTopicFilter');
+    const savedTimeFilter = getCookie('dbTimeFilter');
+    const savedLimit = getCookie('dbLimit');
+    const savedAutoRefresh = getCookie('dbAutoRefresh');
+    
+    if (topicFilter && savedTopicFilter !== null) topicFilter.value = savedTopicFilter;
+    if (timeFilter && savedTimeFilter !== null) timeFilter.value = savedTimeFilter;
+    if (limit && savedLimit !== null) limit.value = savedLimit;
+    if (autoRefresh && savedAutoRefresh !== null) {
+        autoRefresh.checked = savedAutoRefresh === '1';
+        // If auto-refresh was saved as enabled, start the auto-refresh
+        if (autoRefresh.checked) {
+            // Defer to allow page to finish loading
+            setTimeout(() => toggleAutoRefresh(), 200);
+        }
+    }
+    
+    // Broker tab filters
+    const brokerTopicFilter = document.getElementById('brokerTopicFilter');
+    const brokerTimeFilter = document.getElementById('brokerTimeFilter');
+    const brokerLimit = document.getElementById('brokerLimit');
+    
+    const savedBrokerTopicFilter = getCookie('brokerTopicFilter');
+    const savedBrokerTimeFilter = getCookie('brokerTimeFilter');
+    const savedBrokerLimit = getCookie('brokerLimit');
+    
+    if (brokerTopicFilter && savedBrokerTopicFilter !== null) brokerTopicFilter.value = savedBrokerTopicFilter;
+    if (brokerTimeFilter && savedBrokerTimeFilter !== null) brokerTimeFilter.value = savedBrokerTimeFilter;
+    if (brokerLimit && savedBrokerLimit !== null) brokerLimit.value = savedBrokerLimit;
 }
 
 // =============================================================================
@@ -1095,11 +1210,17 @@ window.addEventListener('DOMContentLoaded', () => {
     // Load app configuration first
     loadAppConfig();
     
+    // Load saved filter preferences before loading data
+    loadFilterPreferences();
+    
     loadStats();
     loadMessages();
     
     // Auto-refresh stats every 30 seconds
     setInterval(loadStats, 30000);
+    
+    // Load saved theme preference
+    loadThemePreference();
     
     // Load saved font preference
     loadFontPreference();
@@ -1139,6 +1260,7 @@ function setupEventListeners() {
     if (applyBtn) {
         applyBtn.addEventListener('click', (e) => {
             e.preventDefault();
+            saveBrokerFilterPreferences();
             displayMqttMessages();
         });
     }

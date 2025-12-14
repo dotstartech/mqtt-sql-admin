@@ -18,28 +18,25 @@
                 <button class="settings-btn" onclick="toggleSettingsMenu()" title="Settings">☰</button>
                 <!-- Settings Dropdown Menu -->
                 <div id="settingsMenu" class="settings-menu">
-                    <div class="menu-group">
-                        <div class="menu-group-label">Font</div>
-                        <div class="menu-item" onclick="selectFont(&quot;'JetBrains Mono', monospace&quot;)">
-                            <span class="menu-check" data-font="'JetBrains Mono', monospace">✓</span>
-                            JetBrains Mono
+                    <div class="menu-item menu-item-row">
+                        <span>Theme</span>
+                        <div class="theme-toggle">
+                            <span id="themeLabelDark" class="theme-toggle-label active">Dark</span>
+                            <div id="themeSlider" class="theme-slider" onclick="toggleTheme()">
+                                <div class="theme-slider-knob"></div>
+                            </div>
+                            <span id="themeLabelLight" class="theme-toggle-label">Light</span>
                         </div>
-                        <div class="menu-item" onclick="selectFont(&quot;'Fira Code', monospace&quot;)">
-                            <span class="menu-check" data-font="'Fira Code', monospace">✓</span>
-                            Fira Code
-                        </div>
-                        <div class="menu-item" onclick="selectFont(&quot;'Courier New', monospace&quot;)">
-                            <span class="menu-check" data-font="'Courier New', monospace">✓</span>
-                            Courier New
-                        </div>
-                        <div class="menu-item" onclick="selectFont(&quot;'Segoe UI', sans-serif&quot;)">
-                            <span class="menu-check" data-font="'Segoe UI', sans-serif">✓</span>
-                            Segoe UI
-                        </div>
-                        <div class="menu-item" onclick="selectFont(&quot;'Roboto', sans-serif&quot;)">
-                            <span class="menu-check" data-font="'Roboto', sans-serif">✓</span>
-                            Roboto
-                        </div>
+                    </div>
+                    <div class="menu-item menu-item-row">
+                        <span>Font</span>
+                        <select id="fontSelect" onchange="selectFont(this.value)">
+                            <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+                            <option value="'Fira Code', monospace">Fira Code</option>
+                            <option value="'Courier New', monospace">Courier New</option>
+                            <option value="'Segoe UI', sans-serif">Segoe UI</option>
+                            <option value="'Roboto', sans-serif">Roboto</option>
+                        </select>
                     </div>
                     <div class="menu-separator"></div>
                     <div class="menu-item" onclick="openAboutModal()">

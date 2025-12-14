@@ -59,6 +59,7 @@ The SQL plugin persists MQTT messages to a libSQL database. It can be configured
 | `plugin_opt_batch_size` | Number of messages to accumulate before flushing to the database. | `100` |
 | `plugin_opt_flush_interval` | Maximum time in milliseconds between database flushes. | `50` |
 | `plugin_opt_retention_days` | Automatically delete messages older than N days. Set to `0` to disable (keep all messages). | `0` |
+| `plugin_opt_exclude_headers` | Comma-separated list of headers (user properties) to exclude from persistence ('#' disables headers storage). | `0` |
 
 ### Database Indexes
 

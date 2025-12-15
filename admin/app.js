@@ -192,17 +192,191 @@ function getCookie(name) {
 // Database Tab Functions
 // =============================================================================
 
-async function executeSQL(sql) {
+// MSA authentication credentials (stored in memory for session)
+let msaCredentials = null;
+let loginModalOpen = false;
+
+function getDbAuthHeader() {
+    if (msaCredentials) {
+        return 'Basic ' + btoa(msaCredentials.username + ':' + msaCredentials.password);
+    }
+    return null;
+}
+
+function showLoginModal() {
+    // Don't reopen or refocus if already open
+    if (loginModalOpen) {
+        return;
+    }
+    
+    loginModalOpen = true;
+    const modal = document.getElementById('loginModal');
+    const errorDiv = document.getElementById('loginError');
+    errorDiv.textContent = '';
+    errorDiv.style.display = 'none';
+    modal.classList.add('active');
+    document.getElementById('loginUsername').focus();
+}
+
+function closeLoginModal() {
+    loginModalOpen = false;
+    const modal = document.getElementById('loginModal');
+    modal.classList.remove('active');
+    document.getElementById('loginForm').reset();
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
+    
+    // Test credentials with a simple query
     try {
+        const authHeader = 'Basic ' + btoa(username + ':' + password);
         const response = await fetch(`${API_BASE}/v1/execute`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Authorization': authHeader
             },
+            body: JSON.stringify({
+                stmt: ['SELECT 1']
+            })
+        });
+        
+        if (response.status === 401) {
+            errorDiv.textContent = 'Invalid username or password';
+            errorDiv.style.display = 'block';
+            return;
+        }
+        
+        if (!response.ok) {
+            errorDiv.textContent = 'Connection error: ' + response.status;
+            errorDiv.style.display = 'block';
+            return;
+        }
+        
+        // Credentials are valid - store them
+        msaCredentials = { username, password };
+        closeLoginModal();
+        updateAuthMenuItem();
+        
+        // Refresh data with new credentials
+        dbConnState();
+        loadMessages();
+        
+        // Connect MQTT if on Broker tab
+        const activeTab = document.querySelector('.tab-content.active');
+        if (activeTab && activeTab.id === 'broker-tab' && !window.mqttConnected) {
+            initMqttConnection();
+            window.mqttConnected = true;
+        }
+        // Refresh broker display if on that tab
+        if (activeTab && activeTab.id === 'broker-tab') {
+            displayMqttMessages();
+        }
+        
+    } catch (error) {
+        errorDiv.textContent = 'Connection failed: ' + error.message;
+        errorDiv.style.display = 'block';
+    }
+}
+
+// Update the Login/Logout menu item and button based on auth state
+function updateAuthMenuItem() {
+    const menuItem = document.getElementById('authMenuItem');
+    const authButton = document.getElementById('authButton');
+    const label = msaCredentials ? 'Logout' : 'Login';
+    
+    if (menuItem) {
+        menuItem.textContent = label;
+    }
+    if (authButton) {
+        authButton.textContent = label;
+        authButton.title = label;
+    }
+}
+
+// Handle Login/Logout menu click
+function handleAuthMenuClick() {
+    toggleSettingsMenu();
+    
+    if (msaCredentials) {
+        performLogout();
+    } else {
+        showLoginModal();
+    }
+}
+
+// Handle Login/Logout button click (same as menu but no menu toggle)
+function handleAuthButtonClick() {
+    if (msaCredentials) {
+        performLogout();
+    } else {
+        showLoginModal();
+    }
+}
+
+// Perform logout - clear credentials and data
+function performLogout() {
+    msaCredentials = null;
+    loginModalOpen = false;
+    updateAuthMenuItem();
+    
+    // Clear database tab data
+    //document.getElementById('results').innerHTML = '<div class="no-results">Please log in to view data</div>';
+    document.getElementById('results').innerHTML = '<div class="no-results"></div>';
+    document.getElementById('dbStatusIcon').textContent = '⚫';
+    
+    // Clear broker tab data and disconnect MQTT
+    mqttMessagesMap.clear();
+    if (mqttClient && mqttClient.connected) {
+        mqttClient.end();
+    }
+    window.mqttConnected = false;
+    updateMqttStatus('Disconnected', '⚫', 'var(--ctp-overlay0)');
+    
+    const brokerTbody = document.querySelector('#mqtt-messages-table tbody');
+    if (brokerTbody) {
+        //brokerTbody.innerHTML = '<tr><td colspan="6" class="login-required">Please log in to view data</td></tr>';
+        brokerTbody.innerHTML = '<tr><td colspan="6" class="login-required"></td></tr>';
+    }
+    
+    // Stop auto-refresh if running
+    if (isAutoRefreshEnabled) {
+        toggleAutoRefresh(true);
+    }
+}
+
+async function executeSQL(sql) {
+    try {
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',  // Identify as AJAX to prevent browser auth dialog
+        };
+        
+        // Add auth header if we have credentials
+        const authHeader = getDbAuthHeader();
+        if (authHeader) {
+            headers['Authorization'] = authHeader;
+        }
+        
+        const response = await fetch(`${API_BASE}/v1/execute`, {
+            method: 'POST',
+            headers: headers,
             body: JSON.stringify({
                 stmt: [sql]
             })
         });
+
+        // If unauthorized, show login modal
+        if (response.status === 401) {
+            showLoginModal();
+            throw new Error('Authentication required');
+        }
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -296,6 +470,12 @@ async function loadMessages() {
 }
 
 async function executeCustomQuery() {
+    // Check if user is logged in
+    if (!msaCredentials) {
+        showLoginModal();
+        return;
+    }
+    
     let query = document.getElementById('customQuery').value.trim();
     if (!query) {
         showMessage('Please enter a SQL query', 'error');
@@ -525,8 +705,8 @@ function switchTab(tabName) {
         loadBrokerConfig();
     }
 
-    // Auto-connect MQTT if switching to Broker tab
-    if (tabName === 'broker' && !window.mqttConnected) {
+    // Auto-connect MQTT if switching to Broker tab (only if logged in)
+    if (tabName === 'broker' && !window.mqttConnected && msaCredentials) {
         setTimeout(() => {
             initMqttConnection();
             window.mqttConnected = true;
@@ -561,7 +741,21 @@ function restoreActiveTab() {
 
 async function loadBrokerConfig() {
     try {
-        const response = await fetch('/broker-config');
+        const headers = {
+            'X-Requested-With': 'XMLHttpRequest'
+        };
+        const authHeader = getDbAuthHeader();
+        if (authHeader) {
+            headers['Authorization'] = authHeader;
+        }
+        
+        const response = await fetch('/broker-config', { headers });
+        
+        if (response.status === 401) {
+            showLoginModal();
+            return;
+        }
+        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -661,7 +855,15 @@ async function initMqttConnection() {
         let password = 'admin';
         
         try {
-            const credResponse = await fetch('/mqtt-credentials');
+            const credHeaders = {
+                'X-Requested-With': 'XMLHttpRequest'
+            };
+            const authHeader = getDbAuthHeader();
+            if (authHeader) {
+                credHeaders['Authorization'] = authHeader;
+            }
+            
+            const credResponse = await fetch('/mqtt-credentials', { headers: credHeaders });
             if (credResponse.ok) {
                 const credentials = await credResponse.json();
                 username = credentials.username;
@@ -795,6 +997,12 @@ function updateMqttStatus(text, icon, color) {
 
 // Publish a message to the MQTT broker
 function publishMessage() {
+    // Check if user is logged in
+    if (!msaCredentials) {
+        showLoginModal();
+        return;
+    }
+    
     if (!mqttClient || !mqttClient.connected) {
         console.error('MQTT client not connected, cannot publish message');
         alert('MQTT client not connected. Please wait for connection.');
@@ -881,6 +1089,13 @@ function displayMqttMessages() {
     const tbody = document.querySelector('#mqtt-messages-table tbody');
     if (!tbody) {
         console.log('ERROR: tbody not found');
+        return;
+    }
+    
+    // Show login required message if not authenticated
+    if (!msaCredentials) {
+        //tbody.innerHTML = '<tr><td colspan="6" class="login-required">Please log in to view data</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="login-required"></td></tr>';
         return;
     }
     
@@ -1323,4 +1538,52 @@ function setupEventListeners() {
             displayMqttMessages();
         });
     }
+    
+    // Global keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        // Escape - close modals and clear filters
+        if (e.key === 'Escape') {
+            closeAboutModal();
+            closeConfirmModal();
+            return;
+        }
+        
+        // Ctrl+Enter - Execute query (Database) or Refresh (Broker)
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            if (document.getElementById('database-tab').classList.contains('active')) {
+                const customQuery = document.getElementById('customQuery').value.trim();
+                if (customQuery) {
+                    executeCustomQuery();
+                } else {
+                    loadMessages();
+                }
+            } else if (document.getElementById('broker-tab').classList.contains('active')) {
+                displayMqttMessages();
+            }
+            return;
+        }
+        
+        // Ctrl+1/2/3 - Switch tabs
+        if (e.ctrlKey && !e.shiftKey && ['1', '2', '3'].includes(e.key)) {
+            e.preventDefault();
+            const tabs = document.querySelectorAll('.tab');
+            const tabIndex = parseInt(e.key) - 1;
+            if (tabs[tabIndex]) {
+                tabs[tabIndex].click();
+            }
+            return;
+        }
+        
+        // Ctrl+Shift+R - Toggle auto-refresh
+        if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+            e.preventDefault();
+            const checkbox = document.getElementById('autoRefreshCheckbox');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+                toggleAutoRefresh();
+            }
+            return;
+        }
+    });
 }

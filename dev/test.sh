@@ -15,7 +15,9 @@ USER="${MQTT_USER:-test}"
 PASS="${MQTT_PASS:-test}"
 ADMIN_USER="${MQTT_ADMIN_USER:-admin}"
 ADMIN_PASS="${MQTT_ADMIN_PASS:-admin}"
-DB_URL="${DB_URL:-http://127.0.0.1:8080/db-admin/}"
+DB_URL="${DB_URL:-http://127.0.0.1:8080/db-admin}"
+DB_USER="${DB_USER:-admin}"
+DB_PASS="${DB_PASS:-changeme}"
 ADMIN_URL="${ADMIN_URL:-http://127.0.0.1:8080}"
 
 # Colors for output
@@ -35,37 +37,90 @@ log_section() { echo -e "\n${BLUE}=== $1 ===${NC}"; }
 
 # Query database and return count
 db_count() {
-    curl -s -X POST "$DB_URL" \
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
         -H "Content-Type: application/json" \
-        -d '{"statements": ["SELECT COUNT(*) FROM msg"]}' | \
-        jq -r '.[0].results.rows[0][0]'
+        -d '{"stmt": ["SELECT COUNT(*) FROM msg"]}' | \
+        jq -r '.result.rows[0][0].value'
 }
 
 # Query database for messages matching topic pattern
 db_find_topic() {
     local topic="$1"
-    curl -s -X POST "$DB_URL" \
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
         -H "Content-Type: application/json" \
-        -d "{\"statements\": [\"SELECT COUNT(*) FROM msg WHERE topic = '$topic'\"]}" | \
-        jq -r '.[0].results.rows[0][0]'
+        -d "{\"stmt\": [\"SELECT COUNT(*) FROM msg WHERE topic = '$topic'\"]}" | \
+        jq -r '.result.rows[0][0].value'
 }
 
 # Query database for message by topic and return payload
 db_get_payload() {
     local topic="$1"
-    curl -s -X POST "$DB_URL" \
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
         -H "Content-Type: application/json" \
-        -d "{\"statements\": [\"SELECT payload FROM msg WHERE topic = '$topic' ORDER BY ulid DESC LIMIT 1\"]}" | \
-        jq -r '.[0].results.rows[0][0]'
+        -d "{\"stmt\": [\"SELECT payload FROM msg WHERE topic = '$topic' ORDER BY ulid DESC LIMIT 1\"]}" | \
+        jq -r '.result.rows[0][0].value'
 }
 
 # Query database for message fields (ulid, topic, payload, retain, qos, headers)
+# Returns array of values: [ulid, topic, payload, retain, qos, headers]
 db_get_message() {
     local topic="$1"
-    curl -s -X POST "$DB_URL" \
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
         -H "Content-Type: application/json" \
-        -d "{\"statements\": [\"SELECT ulid, topic, payload, retain, qos, headers FROM msg WHERE topic = '$topic' ORDER BY ulid DESC LIMIT 1\"]}" | \
-        jq -r '.[0].results.rows[0] | @json'
+        -d "{\"stmt\": [\"SELECT ulid, topic, payload, retain, qos, headers FROM msg WHERE topic = '$topic' ORDER BY ulid DESC LIMIT 1\"]}" | \
+        jq -r '.result.rows[0] | [.[].value] | @json'
+}
+
+# Query database for ULID by topic
+db_get_ulid() {
+    local topic="$1"
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
+        -H "Content-Type: application/json" \
+        -d "{\"stmt\": [\"SELECT ulid FROM msg WHERE topic = '$topic' ORDER BY ulid DESC LIMIT 1\"]}" | \
+        jq -r '.result.rows[0][0].value'
+}
+
+# Query database for unique ULID count by topic
+db_count_ulids() {
+    local topic="$1"
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
+        -H "Content-Type: application/json" \
+        -d "{\"stmt\": [\"SELECT COUNT(DISTINCT ulid) FROM msg WHERE topic = '$topic'\"]}" | \
+        jq -r '.result.rows[0][0].value'
+}
+
+# Query database for ULIDs by topic (returns newline-separated list)
+db_get_ulids() {
+    local topic="$1"
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
+        -H "Content-Type: application/json" \
+        -d "{\"stmt\": [\"SELECT ulid FROM msg WHERE topic = '$topic' ORDER BY ulid ASC\"]}" | \
+        jq -r '.result.rows[][0].value'
+}
+
+# Query database for latest ULID
+db_get_latest_ulid() {
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
+        -H "Content-Type: application/json" \
+        -d '{"stmt": ["SELECT ulid FROM msg ORDER BY ulid DESC LIMIT 1"]}' | \
+        jq -r '.result.rows[0][0].value'
+}
+
+# Execute raw SQL and return full response
+db_execute() {
+    local sql="$1"
+    curl -s -X POST "$DB_URL/v1/execute" \
+        -u "$DB_USER:$DB_PASS" \
+        -H "Content-Type: application/json" \
+        -d "{\"stmt\": [\"$sql\"]}"
 }
 
 # Check HTTP endpoint returns expected status
@@ -83,6 +138,7 @@ echo "========================================"
 echo "Broker: $BROKER:$PORT (WS: $WS_PORT)"
 echo "User: $USER"
 echo "DB URL: $DB_URL"
+echo "DB User: $DB_USER"
 echo "Admin URL: $ADMIN_URL"
 echo "Test ID: $TEST_ID"
 echo "========================================"
@@ -287,10 +343,7 @@ log_info "Publishing first retained message"
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_DELETE_ULID" -m '{"msg":"first"}' -q 1 -r -V 5
 sleep 0.5
 
-FIRST_ULID=$(curl -s -X POST "$DB_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"statements\": [\"SELECT ulid FROM msg WHERE topic = '$TOPIC_DELETE_ULID' ORDER BY ulid DESC LIMIT 1\"]}" | \
-    jq -r '.[0].results.rows[0][0]')
+FIRST_ULID=$(db_get_ulid "$TOPIC_DELETE_ULID")
 log_info "First message ULID: $FIRST_ULID"
 
 log_info "Publishing second retained message"
@@ -355,10 +408,7 @@ for i in 1 2 3; do
 done
 sleep 0.5
 
-ULID_COUNT=$(curl -s -X POST "$DB_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"statements\": [\"SELECT COUNT(DISTINCT ulid) FROM msg WHERE topic = '$TOPIC_ULID_TEST'\"]}" | \
-    jq -r '.[0].results.rows[0][0]')
+ULID_COUNT=$(db_count_ulids "$TOPIC_ULID_TEST")
 
 if [ "$ULID_COUNT" -eq 3 ]; then
     log_pass "3 unique ULIDs generated"
@@ -371,10 +421,7 @@ fi
 # -----------------------------------------
 echo ""
 echo "--- Test 13: ULID ordering ---"
-ULIDS=$(curl -s -X POST "$DB_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"statements\": [\"SELECT ulid FROM msg WHERE topic = '$TOPIC_ULID_TEST' ORDER BY ulid ASC\"]}" | \
-    jq -r '.[0].results.rows[][0]')
+ULIDS=$(db_get_ulids "$TOPIC_ULID_TEST")
 
 SORTED_ULIDS=$(echo "$ULIDS" | sort)
 if [ "$ULIDS" = "$SORTED_ULIDS" ]; then
@@ -388,10 +435,7 @@ fi
 # -----------------------------------------
 echo ""
 echo "--- Test 14: ULID format validation ---"
-SAMPLE_ULID=$(curl -s -X POST "$DB_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"statements\": [\"SELECT ulid FROM msg ORDER BY ulid DESC LIMIT 1\"]}" | \
-    jq -r '.[0].results.rows[0][0]')
+SAMPLE_ULID=$(db_get_latest_ulid)
 
 if [[ ${#SAMPLE_ULID} -eq 26 ]] && [[ "$SAMPLE_ULID" =~ ^[0-9A-HJKMNP-TV-Z]+$ ]]; then
     log_pass "ULID format valid: $SAMPLE_ULID"
@@ -457,10 +501,8 @@ fi
 # -----------------------------------------
 echo ""
 echo "--- Test 19: Database API endpoint ---"
-RESPONSE=$(curl -s -X POST "$DB_URL" \
-    -H "Content-Type: application/json" \
-    -d '{"statements": ["SELECT 1"]}')
-if [[ "$RESPONSE" == *"results"* ]]; then
+RESPONSE=$(db_execute "SELECT 1")
+if [[ "$RESPONSE" == *"result"* ]]; then
     log_pass "Database API responds correctly"
 else
     log_fail "Database API response unexpected: $RESPONSE"
@@ -483,7 +525,7 @@ fi
 # -----------------------------------------
 echo ""
 echo "--- Test 21: MQTT credentials endpoint ---"
-RESPONSE=$(curl -s "$ADMIN_URL/mqtt-credentials")
+RESPONSE=$(curl -s -u "$DB_USER:$DB_PASS" "$ADMIN_URL/mqtt-credentials")
 if [[ "$RESPONSE" == *"username"* ]] && [[ "$RESPONSE" == *"password"* ]]; then
     log_pass "/mqtt-credentials returns credentials"
 else
@@ -495,7 +537,7 @@ fi
 # -----------------------------------------
 echo ""
 echo "--- Test 22: Broker config endpoint ---"
-RESPONSE=$(curl -s "$ADMIN_URL/broker-config")
+RESPONSE=$(curl -s -u "$DB_USER:$DB_PASS" "$ADMIN_URL/broker-config")
 if [[ "$RESPONSE" == *"clients"* ]] || [[ "$RESPONSE" == *"roles"* ]]; then
     log_pass "/broker-config returns dynsec config"
 else

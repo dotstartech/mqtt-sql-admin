@@ -85,7 +85,7 @@ body {
 header {
     background: var(--ctp-mantle);
     color: var(--ctp-text);
-    padding: 8px;
+    padding: 10px;
     text-align: center;
     position: relative;
     z-index: 1000;
@@ -127,6 +127,8 @@ header h1 {
     font-size: 14px;
     font-weight: 600;
     transition: all 0.2s;
+    min-width: 100px;
+    text-align: center;
 }
 
 .tab:hover {
@@ -224,6 +226,8 @@ input, select, button {
     font-size: 14px;
     background: var(--ctp-surface0);
     color: var(--ctp-text);
+    box-sizing: border-box;
+    height: 36px;
 }
 
 input[type="text"] {
@@ -376,6 +380,9 @@ th, td {
     text-align: left;
     border-bottom: 1px solid var(--ctp-surface0);
     font-size: 14px;
+    line-height: 20px;
+    height: 36px;
+    box-sizing: border-box;
 }
 
 th {
@@ -421,7 +428,7 @@ td:first-child {
     cursor: pointer;
     font-size: 12px;
     padding: 1px 3px;
-    border-radius: 3px;
+    border-radius: 2px;
     background: var(--ctp-surface1);
     transition: opacity 0.15s ease;
     vertical-align: middle;
@@ -616,36 +623,40 @@ td:first-child {
 /* Retain column styling */
 td.retained {
     text-align: center;
-    font-size: 16px;
     width: 70px;
 }
 
 .retain-check {
     color: var(--ctp-green);
     font-weight: bold;
-    font-size: 18px;
+    font-size: 14px;
+    line-height: 20px;
 }
 
 /* Actions column styling */
 td.actions {
     text-align: center;
     width: 60px;
+    vertical-align: middle;
 }
 
 .delete-btn {
     background: transparent;
-    border: 1px solid var(--ctp-surface2);
-    border-radius: 4px;
-    padding: 4px 8px;
+    border: none;
+    padding: 0;
+    margin: 0;
     cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s;
+    font-size: 12px;
+    line-height: 1;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s;
     opacity: 0.7;
 }
 
 .delete-btn:hover {
-    background: var(--ctp-red);
-    border-color: var(--ctp-red);
     opacity: 1;
 }
 
@@ -683,16 +694,34 @@ td.actions {
     background: transparent;
     border: none;
     color: var(--ctp-subtext0);
-    font-size: 24px;
+    font-size: 20px;
     cursor: pointer;
-    padding: 8px;
-    border-radius: 4px;
+    padding: 6px 10px;
+    border-radius: 2px;
     transition: background 0.2s, color 0.2s;
 }
 
 .settings-btn:hover {
     background: var(--ctp-surface0);
     color: var(--ctp-text);
+}
+
+.auth-btn {
+    background: transparent;
+    border: 1px solid var(--ctp-surface1);
+    color: var(--ctp-subtext0);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 2px;
+    margin-right: 8px;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.auth-btn:hover {
+    background: var(--ctp-surface0);
+    color: var(--ctp-text);
+    border-color: var(--ctp-surface2);
 }
 
 .settings-menu {
@@ -908,6 +937,91 @@ td.actions {
     background: var(--ctp-maroon);
 }
 
+.modal-btn-login {
+    background: var(--ctp-blue);
+    color: var(--ctp-base);
+    width: 100%;
+}
+
+.modal-btn-login:hover {
+    background: var(--ctp-sapphire);
+}
+
+/* Login Modal */
+.login-modal {
+    min-width: 320px;
+    max-width: 380px;
+}
+
+.login-modal .modal-header {
+    justify-content: center;
+}
+
+.login-modal .modal-header h2 {
+    font-size: 16px;
+    color: var(--ctp-text);
+    text-align: center;
+}
+
+.login-info {
+    color: var(--ctp-subtext0);
+    font-size: 13px;
+    margin: 0 0 16px 0;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--ctp-subtext1);
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--ctp-surface0);
+    border: 1px solid var(--ctp-surface1);
+    border-radius: 6px;
+    color: var(--ctp-text);
+    font-size: 14px;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--ctp-blue);
+    box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+}
+
+.login-error {
+    display: none;
+    padding: 10px 12px;
+    background: rgba(243, 139, 168, 0.15);
+    border: 1px solid var(--ctp-red);
+    border-radius: 6px;
+    color: var(--ctp-red);
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.login-modal .modal-buttons {
+    margin-top: 32px;
+    justify-content: center;
+}
+
+.login-modal .modal-buttons button {
+    min-width: 120px;
+    width: auto;
+}
+
 .about-modal {
     text-align: center;
 }
@@ -1013,7 +1127,44 @@ td.actions {
     text-decoration: underline;
 }
 
+.about-shortcuts {
+    text-align: left;
+    font-size: 12px;
+}
+
+.about-shortcuts .about-label {
+    margin-bottom: 8px;
+    color: var(--ctp-subtext0);
+}
+
+.shortcut-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 4px 0;
+    color: var(--ctp-subtext1);
+}
+
+kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-family: var(--table-font, 'JetBrains Mono', monospace);
+    background: var(--ctp-surface0);
+    border: 1px solid var(--ctp-surface1);
+    border-radius: 4px;
+    color: var(--ctp-text);
+}
+
 .about-copyright {
     font-size: 12px;
     color: var(--ctp-overlay0);
+}
+
+/* Login required message */
+.login-required {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--ctp-subtext0);
+    font-style: italic;
 }

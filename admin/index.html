@@ -15,6 +15,7 @@
             <img id="headerLogo" class="header-logo" src="" alt="Logo" style="display: none;">
             <h1 id="headerTitle">MQTT SQL Admin</h1>
             <div class="settings-wrapper">
+                <button id="authButton" class="auth-btn" onclick="handleAuthButtonClick()" title="Login">Login</button>
                 <button class="settings-btn" onclick="toggleSettingsMenu()" title="Settings">☰</button>
                 <!-- Settings Dropdown Menu -->
                 <div id="settingsMenu" class="settings-menu">
@@ -37,6 +38,10 @@
                             <option value="'Segoe UI', sans-serif">Segoe UI</option>
                             <option value="'Roboto', sans-serif">Roboto</option>
                         </select>
+                    </div>
+                    <div class="menu-separator"></div>
+                    <div id="authMenuItem" class="menu-item" onclick="handleAuthMenuClick()">
+                        Login
                     </div>
                     <div class="menu-separator"></div>
                     <div class="menu-item" onclick="openAboutModal()">
@@ -63,6 +68,31 @@
             </div>
         </div>
 
+        <!-- Login Modal -->
+        <div id="loginModal" class="modal-overlay">
+            <div class="modal-content login-modal">
+                <div class="modal-header">
+                    <h2>🔐 Login</h2>
+                </div>
+                <div class="modal-body">
+                    <form id="loginForm" onsubmit="handleLogin(event)">
+                        <div class="form-group">
+                            <label for="loginUsername">Username</label>
+                            <input type="text" id="loginUsername" name="username" autocomplete="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Password</label>
+                            <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
+                        </div>
+                        <div id="loginError" class="login-error"></div>
+                        <div class="modal-buttons">
+                            <button type="submit" class="modal-btn modal-btn-login">Login</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- About Modal -->
         <div id="aboutModal" class="modal-overlay" onclick="closeAboutOnOverlay(event)">
             <div class="modal-content about-modal">
@@ -84,6 +114,14 @@
                     <div class="about-row">
                         <span class="about-label">License:</span>
                         <span class="about-value">Apache License 2.0</span>
+                    </div>
+                    <div class="about-separator"></div>
+                    <div class="about-shortcuts">
+                        <div class="about-label">Keyboard Shortcuts:</div>
+                        <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Execute query / Refresh</div>
+                        <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> Switch tabs</div>
+                        <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> Toggle auto-refresh</div>
+                        <div class="shortcut-row"><kbd>Esc</kbd> Close dialogs</div>
                     </div>
                     <div class="about-separator"></div>
                     <div class="about-copyright">© 2025 dotStar Technologies B.V.</div>

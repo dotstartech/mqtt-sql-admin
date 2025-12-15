@@ -21,10 +21,16 @@ docker secret create msa.properties msa.properties
 docker stack deploy -c compose.yml msa
 ```
 
-The `msa.secrets` file contains environment variables for the admin UI to connect to the MQTT broker:
+The `msa.secrets` file contains environment variables for the admin UI and the MQTT broker:
 ```
+MSA_USER=admin:changeme
 MSA_MQTT_USER=admin:admin
 ```
+
+| Variable | Description |
+|----------|-------------|
+| `MSA_USER` | MSA admin credentials in `username:password` format (for `/db-admin/` HTTP Basic Auth) |
+| `MSA_MQTT_USER` | MQTT broker credentials in `username:password` format (for admin UI to connect to broker) |
 
 The `msa.properties` file contains application configuration:
 ```properties
@@ -70,7 +76,7 @@ The plugin automatically creates the following indexes for optimal query perform
 ### Example Configuration
 
 ```properties
-plugin /usr/lib/sql_plugin.so
+plugin /usr/lib/libsql_plugin.so
 # Exclude command topics from persistence
 plugin_opt_exclude_topics cmd/#,+/test/exclude/#
 # Batch insert settings
@@ -113,6 +119,19 @@ plugin_opt_flush_interval 100
 plugin_opt_batch_size 100
 plugin_opt_flush_interval 50
 ```
+
+## Admin UI Keyboard Shortcuts
+
+The web admin interface supports the following keyboard shortcuts for improved productivity:
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Enter` | Execute custom query (Database tab) or refresh messages (Broker tab) |
+| `Ctrl+1` | Switch to Database tab |
+| `Ctrl+2` | Switch to Broker tab |
+| `Ctrl+3` | Switch to ACL tab |
+| `Ctrl+Shift+R` | Toggle auto-refresh on/off |
+| `Escape` | Close modal dialogs |
 
 ## Acknowledgements
 

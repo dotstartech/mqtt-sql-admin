@@ -1,11 +1,60 @@
 #!/bin/bash
 set -e
 
+# Maximum restart attempts before giving up
+MAX_RESTART_ATTEMPTS=3
+
 # Function to handle shutdown
 shutdown() {
     echo "Shutting down services..."
     kill $NGINX_PID $SQLD_PID $MOSQUITTO_PID 2>/dev/null || true
     exit 0
+}
+
+# Function to restart a failed service
+restart_service() {
+    local service_name=$1
+    local attempt=1
+    
+    while [ $attempt -le $MAX_RESTART_ATTEMPTS ]; do
+        echo "Attempting to restart $service_name (attempt $attempt/$MAX_RESTART_ATTEMPTS)..."
+        
+        case $service_name in
+            nginx)
+                nginx &
+                NGINX_PID=$!
+                sleep 1
+                if kill -0 $NGINX_PID 2>/dev/null; then
+                    echo "$service_name restarted successfully"
+                    return 0
+                fi
+                ;;
+            sqld)
+                sqld $SQLD_ARGS &
+                SQLD_PID=$!
+                sleep 2
+                if kill -0 $SQLD_PID 2>/dev/null; then
+                    echo "$service_name restarted successfully"
+                    return 0
+                fi
+                ;;
+            mosquitto)
+                /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf &
+                MOSQUITTO_PID=$!
+                sleep 1
+                if kill -0 $MOSQUITTO_PID 2>/dev/null; then
+                    echo "$service_name restarted successfully"
+                    return 0
+                fi
+                ;;
+        esac
+        
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+    
+    echo "ERROR: Failed to restart $service_name after $MAX_RESTART_ATTEMPTS attempts"
+    return 1
 }
 
 # Trap SIGTERM and SIGINT
@@ -98,19 +147,25 @@ chmod 0700 /mosquitto/data/mosquitto.db 2>/dev/null || true
 /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf &
 MOSQUITTO_PID=$!
 
-# Monitor all processes - if any exit, shut down all
+# Monitor all processes - attempt restart before shutdown
 while true; do
     if ! kill -0 $NGINX_PID 2>/dev/null; then
-        echo "ERROR: nginx died unexpectedly"
-        shutdown
+        echo "WARNING: nginx died unexpectedly"
+        if ! restart_service nginx; then
+            shutdown
+        fi
     fi
     if ! kill -0 $SQLD_PID 2>/dev/null; then
-        echo "ERROR: sqld died unexpectedly"
-        shutdown
+        echo "WARNING: sqld died unexpectedly"
+        if ! restart_service sqld; then
+            shutdown
+        fi
     fi
     if ! kill -0 $MOSQUITTO_PID 2>/dev/null; then
-        echo "ERROR: mosquitto died unexpectedly"
-        shutdown
+        echo "WARNING: mosquitto died unexpectedly"
+        if ! restart_service mosquitto; then
+            shutdown
+        fi
     fi
     sleep 5
 done

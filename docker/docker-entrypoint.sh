@@ -43,6 +43,28 @@ if [ "$user" = '0' ]; then
 			chown admin:admin /tmp/mqtt-credentials.json
 			chmod 644 /tmp/mqtt-credentials.json
 		fi
+		
+		# Extract MSA_USER value (format: username:password) for /db-admin/ HTTP Basic Auth
+		db_user=$(grep "^MSA_USER=" /run/secrets/msa.secrets | cut -d'=' -f2)
+		if [ -n "$db_user" ]; then
+			db_username=$(echo "$db_user" | cut -d':' -f1)
+			db_password=$(echo "$db_user" | cut -d':' -f2)
+			# Generate htpasswd using openssl
+			echo "$db_username:$(echo -n "$db_password" | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
+			chown admin:admin /tmp/htpasswd
+			chmod 644 /tmp/htpasswd
+		else
+			echo "WARNING: MSA_USER not set in msa.secrets, using default 'admin:changeme'"
+			echo "admin:$(echo -n 'changeme' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
+			chown admin:admin /tmp/htpasswd
+			chmod 644 /tmp/htpasswd
+		fi
+	else
+		# Create default credentials if no secrets file
+		echo "WARNING: msa.secrets not found, using default credentials"
+		echo "admin:$(echo -n 'changeme' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
+		chown admin:admin /tmp/htpasswd
+		chmod 644 /tmp/htpasswd
 	fi
 	
 	# Parse msa.properties and create app config JSON for web client

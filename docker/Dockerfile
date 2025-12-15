@@ -4,7 +4,7 @@ ENV VERSION=2.0.22 \
     LWS_VERSION=4.2.1 \
     LWS_SHA256=842da21f73ccba2be59e680de10a8cce7928313048750eb6ad73b6fa50763c51
 
-COPY plugins/sql/sql_plugin.c /tmp/sql_plugin.c
+COPY plugins/sql/libsql_plugin.c /tmp/libsql_plugin.c
 COPY plugins/sql/Makefile /tmp/Makefile
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -47,7 +47,7 @@ RUN curl -o /tmp/mosq.tar.gz https://mosquitto.org/files/source/mosquitto-${VERS
     && tar --strip=1 -xf /tmp/mosq.tar.gz -C /build/mosq \
     && rm /tmp/mosq.tar.gz \
     && mkdir -p /build/mosq/plugins/sql \
-    && mv /tmp/sql_plugin.c /build/mosq/plugins/sql/. \
+    && mv /tmp/libsql_plugin.c /build/mosq/plugins/sql/. \
     && mv /tmp/Makefile /build/mosq/plugins/sql/. \
     && sed -i 's/DIRS=/DIRS=sql /' /build/mosq/plugins/Makefile \
     && make -C /build/mosq -j "$(nproc)" \
@@ -87,6 +87,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcjson1 \
         libsqlite3-0 \
         nginx-light \
+        curl \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid ${GID} admin \
     && useradd --gid ${GID} --uid ${UID} --no-create-home --shell /sbin/nologin admin \
@@ -98,7 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /build/mosq/lib/libmosquitto.so.1 /usr/lib/libmosquitto.so.1
 COPY --from=builder /build/mosq/src/mosquitto /usr/sbin/mosquitto
 COPY --from=builder /build/mosq/plugins/dynamic-security/mosquitto_dynamic_security.so /usr/lib/mosquitto_dynamic_security.so
-COPY --from=builder /build/mosq/plugins/sql/sql_plugin.so /usr/lib/sql_plugin.so
+COPY --from=builder /build/mosq/plugins/sql/libsql_plugin.so /usr/lib/libsql_plugin.so
 COPY --from=builder /build/sqld /usr/local/bin/sqld
 COPY --from=builder /build/su-exec /usr/local/bin/su-exec
 
@@ -128,6 +129,10 @@ EXPOSE 9001
 EXPOSE 8080
 # libSQL queries over HTTP
 EXPOSE 8000
+
+# Health check - verify nginx is serving (uses /health endpoint which bypasses auth)
+HEALTHCHECK --interval=5s --timeout=3s --start-period=3s --retries=3 \
+    CMD curl -sf http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["/mosquitto/run.sh"]

@@ -80,6 +80,22 @@ function timestampToUlidPrefix(timestampMs) {
     return result;
 }
 
+// Format a Date object according to user's time format preference
+// Formats: 'full' = YYYY-MM-DD HH:mm:ss.SSS, 'short' = YY-MM-DD HH:mm:ss.SSS
+function formatTimestamp(date) {
+    const format = getCookie('timeFormat') || 'full';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    
+    const yearStr = format === 'short' ? String(year).slice(-2) : year;
+    return `${yearStr}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+}
+
 // ULID timestamp extraction
 // ULID format: first 10 characters encode timestamp in milliseconds since Unix epoch
 function extractTimestampFromULID(ulid) {
@@ -105,16 +121,8 @@ function extractTimestampFromULID(ulid) {
         // Convert milliseconds to JavaScript Date
         const date = new Date(timestamp);
         
-        // Format as YYYY-MM-DD HH:MM:SS.mmm
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
-        const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
-        
-        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+        // Format according to user preference
+        return formatTimestamp(date);
     } catch (error) {
         console.error('Error extracting timestamp from ULID:', error);
         return 'Error';
@@ -926,13 +934,26 @@ async function initMqttConnection() {
                 }
             }
             
-            // Derive timestamp from ULID (broker processing time) or fall back to current time
-            const timestamp = ulid 
-                ? extractTimestampFromULID(ulid) 
-                : new Date().toISOString().replace('T', ' ').substr(0, 23);
+            // Store raw timestamp (milliseconds) for later formatting
+            // If ULID available, extract timestamp from it; otherwise use current time
+            let timestampMs;
+            if (ulid) {
+                // Extract timestamp from ULID
+                const timestampPart = ulid.substring(0, 10).toUpperCase();
+                timestampMs = 0;
+                for (let i = 0; i < timestampPart.length; i++) {
+                    const char = timestampPart[i];
+                    const value = ULID_ENCODING.indexOf(char);
+                    if (value !== -1) {
+                        timestampMs = timestampMs * 32 + value;
+                    }
+                }
+            } else {
+                timestampMs = Date.now();
+            }
             
             const message = {
-                timestamp: timestamp,
+                timestampMs: timestampMs,
                 topic: topic,
                 payload: payloadStr,
                 retain: packet.retain === true,
@@ -949,9 +970,8 @@ async function initMqttConnection() {
                 let oldestTime = Infinity;
                 
                 for (const [key, msg] of mqttMessagesMap) {
-                    const msgTime = new Date(msg.timestamp).getTime();
-                    if (msgTime < oldestTime) {
-                        oldestTime = msgTime;
+                    if (msg.timestampMs < oldestTime) {
+                        oldestTime = msg.timestampMs;
                         oldestKey = key;
                     }
                 }
@@ -1118,7 +1138,7 @@ function displayMqttMessages() {
     
     // Convert Map values to array and sort by timestamp (newest first)
     let filteredMessages = Array.from(mqttMessagesMap.values())
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        .sort((a, b) => b.timestampMs - a.timestampMs);
 
     // Apply persistent-only filter
     if (persistentOnly) {
@@ -1132,13 +1152,12 @@ function displayMqttMessages() {
         );
     }
     
-    // Apply time range filter (messages have ISO timestamp)
+    // Apply time range filter (messages have timestampMs in milliseconds)
     if (timeFilterValue !== 'all') {
         const minutesAgo = parseInt(timeFilterValue);
-        const cutoffTime = new Date(Date.now() - minutesAgo * 60 * 1000);
+        const cutoffTime = Date.now() - minutesAgo * 60 * 1000;
         filteredMessages = filteredMessages.filter(msg => {
-            const msgTime = new Date(msg.timestamp);
-            return msgTime >= cutoffTime;
+            return msg.timestampMs >= cutoffTime;
         });
     }
     
@@ -1172,8 +1191,11 @@ function displayMqttMessages() {
         // Build headers column showing ulid if available
         const headersHtml = msg.ulid ? `<span class="header-item"><span class="header-name">ulid:</span> ${msg.ulid}</span>` : '';
         
+        // Format timestamp at display time using user preference
+        const formattedTimestamp = formatTimestamp(new Date(msg.timestampMs));
+        
         row.innerHTML = `
-            <td class="timestamp">${msg.timestamp}</td>
+            <td class="timestamp">${formattedTimestamp}</td>
             ${topicCell}
             ${payloadCell}
             <td class="headers">${headersHtml}</td>
@@ -1226,8 +1248,9 @@ function toggleSettingsMenu() {
     if (isOpen) {
         closeSettingsMenu();
     } else {
-        // Update select based on current font
+        // Update selects based on current preferences
         updateFontSelect();
+        updateTimeFormatSelect();
         menu.classList.add('active');
         
         // Close menu when clicking outside
@@ -1272,6 +1295,41 @@ function applyTableFont(fontFamily) {
 function loadFontPreference() {
     const savedFont = getCookie('tableFont') || "'JetBrains Mono', monospace";
     applyTableFont(savedFont);
+}
+
+// =============================================================================
+// Time Format Functions
+// =============================================================================
+
+function updateTimeFormatSelect() {
+    const currentFormat = getCookie('timeFormat') || 'full';
+    const timeFormatSelect = document.getElementById('timeFormatSelect');
+    if (timeFormatSelect) {
+        timeFormatSelect.value = currentFormat;
+    }
+}
+
+function selectTimeFormat(format) {
+    const previousFormat = getCookie('timeFormat') || 'full';
+    if (format !== previousFormat) {
+        setCookie('timeFormat', format, 365);
+        // Refresh tables immediately to show new format
+        refreshDisplayedTables();
+    }
+    updateTimeFormatSelect();
+}
+
+// Refresh displayed tables without re-fetching data
+function refreshDisplayedTables() {
+    if (document.getElementById('database-tab').classList.contains('active')) {
+        // Re-render the database table using cached result
+        if (lastQueryResult) {
+            displayResults(lastQueryResult);
+        }
+    } else if (document.getElementById('broker-tab').classList.contains('active')) {
+        // Re-render broker messages (will use new format)
+        displayMqttMessages();
+    }
 }
 
 // =============================================================================

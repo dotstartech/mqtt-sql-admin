@@ -39,6 +39,13 @@
                             <option value="'Roboto', sans-serif">Roboto</option>
                         </select>
                     </div>
+                    <div class="menu-item menu-item-row">
+                        <span>Time Format</span>
+                        <select id="timeFormatSelect" onchange="selectTimeFormat(this.value)">
+                            <option value="full">YYYY-MM-DD</option>
+                            <option value="short">YY-MM-DD</option>
+                        </select>
+                    </div>
                     <div class="menu-separator"></div>
                     <div id="authMenuItem" class="menu-item" onclick="handleAuthMenuClick()">
                         Login

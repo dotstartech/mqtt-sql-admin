@@ -19,6 +19,14 @@
 
 #include "sqlite3.h"
 
+// Conditional debug logging - compiles to nothing in release builds
+// Enable with -DDEBUG_LOGGING in CFLAGS for verbose output
+#ifdef DEBUG_LOGGING
+    #define LOG_DEBUG(...) mosquitto_log_printf(MOSQ_LOG_DEBUG, __VA_ARGS__)
+#else
+    #define LOG_DEBUG(...) ((void)0)
+#endif
+
 // Generator configuration flags
 #define ULID_RELAXED   (1 << 0)
 #define ULID_PARANOID  (1 << 1)
@@ -31,7 +39,7 @@
 // Batch insert configuration (defaults, can be overridden via config)
 #define DEFAULT_BATCH_SIZE 100           // Flush when queue reaches this size
 #define DEFAULT_FLUSH_INTERVAL_MS 50     // Flush at least every 50ms
-#define MAX_QUEUE_SIZE 10000             // Maximum queue size before blocking
+#define MAX_QUEUE_SIZE 15000             // Maximum queue size before blocking
 
 // Data retention configuration
 #define DEFAULT_RETENTION_DAYS 0         // 0 = disabled (keep all messages)
@@ -60,6 +68,8 @@ static mosquitto_plugin_id_t *mosq_pid = NULL;
 static sqlite3 *msg_db = NULL;
 static sqlite3_stmt *insert_stmt = NULL;
 static sqlite3_stmt *delete_stmt = NULL;
+static sqlite3_stmt *find_latest_stmt = NULL;    // For fallback delete (find most recent ULID)
+static sqlite3_stmt *retention_delete_stmt = NULL; // For retention cleanup
 
 // Topic exclusion patterns
 static char *exclude_patterns[MAX_EXCLUDE_PATTERNS];
@@ -525,21 +535,47 @@ static void enqueue_message(const char *ulid, const char *topic, const char *pay
     memcpy(entry->ulid, ulid, 27);
     entry->topic = strdup(topic);
     entry->payload = strndup(payload, payloadlen);
-    entry->headers = headers ? strdup(headers) : NULL;
+    entry->headers = NULL;  // Initialize to NULL first
     entry->retain = retain;
     entry->qos = qos;
     entry->next = NULL;
     
+    // Check mandatory allocations first
     if (entry->topic == NULL || entry->payload == NULL) {
         mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to allocate message strings");
         free(entry->topic);
         free(entry->payload);
-        free(entry->headers);
         free(entry);
         return;
     }
     
+    // Now handle optional headers - if strdup fails, log warning but continue
+    if (headers != NULL) {
+        entry->headers = strdup(headers);
+        if (entry->headers == NULL) {
+            mosquitto_log_printf(MOSQ_LOG_WARNING, "Failed to allocate headers string, message stored without headers");
+        }
+    }
+    
     pthread_mutex_lock(&queue_mutex);
+    
+    // Enforce maximum queue size to prevent unbounded memory growth
+    if (msg_queue_size >= MAX_QUEUE_SIZE) {
+        mosquitto_log_printf(MOSQ_LOG_WARNING, "Message queue full (%d), dropping oldest entry", MAX_QUEUE_SIZE);
+        // Drop oldest entry from head
+        struct msg_entry *old = msg_queue_head;
+        if (old != NULL) {
+            msg_queue_head = old->next;
+            if (msg_queue_head == NULL) {
+                msg_queue_tail = NULL;
+            }
+            msg_queue_size--;
+            free(old->topic);
+            free(old->payload);
+            free(old->headers);
+            free(old);
+        }
+    }
     
     // Add to queue
     if (msg_queue_tail == NULL) {
@@ -685,14 +721,10 @@ static void flush_batch(void) {
             }
         } else if (entry->operation == OP_DELETE_FALLBACK) {
             // Delete most recent message for topic (fallback when no ULID provided)
-            sqlite3_stmt *find_stmt = NULL;
-            rc = sqlite3_prepare_v2(msg_db,
-                "SELECT ulid FROM msg WHERE topic = ?1 ORDER BY ulid DESC LIMIT 1",
-                -1, &find_stmt, 0);
-            if (rc == SQLITE_OK) {
-                sqlite3_bind_text(find_stmt, 1, entry->topic, -1, SQLITE_STATIC);
-                if (sqlite3_step(find_stmt) == SQLITE_ROW) {
-                    const char *found_ulid = (const char *)sqlite3_column_text(find_stmt, 0);
+            if (find_latest_stmt != NULL) {
+                sqlite3_bind_text(find_latest_stmt, 1, entry->topic, -1, SQLITE_STATIC);
+                if (sqlite3_step(find_latest_stmt) == SQLITE_ROW) {
+                    const char *found_ulid = (const char *)sqlite3_column_text(find_latest_stmt, 0);
                     if (delete_stmt != NULL && found_ulid != NULL) {
                         sqlite3_bind_text(delete_stmt, 1, entry->topic, -1, SQLITE_STATIC);
                         sqlite3_bind_text(delete_stmt, 2, found_ulid, -1, SQLITE_TRANSIENT);
@@ -708,7 +740,7 @@ static void flush_batch(void) {
                 } else {
                     mosquitto_log_printf(MOSQ_LOG_WARNING, "No message found to delete for topic: %s", entry->topic);
                 }
-                sqlite3_finalize(find_stmt);
+                sqlite3_reset(find_latest_stmt);
             }
         }
         
@@ -723,8 +755,8 @@ static void flush_batch(void) {
     }
     
     if (insert_count > 0 || delete_count > 0) {
-        mosquitto_log_printf(MOSQ_LOG_DEBUG, "Batch: %d inserts, %d deletes committed", 
-                            insert_count, delete_count);
+        LOG_DEBUG("Batch: %d inserts, %d deletes committed", 
+                  insert_count, delete_count);
     }
     
     // Free batch entries
@@ -789,20 +821,20 @@ static void cleanup_old_messages(void) {
     char cutoff_prefix[11];
     timestamp_to_ulid_prefix(cutoff_ms, cutoff_prefix);
     
-    char sql[256];
-    snprintf(sql, sizeof(sql), "DELETE FROM msg WHERE ulid < '%s'", cutoff_prefix);
-    
-    char *err_msg = NULL;
-    int rc = sqlite3_exec(msg_db, sql, NULL, NULL, &err_msg);
-    if (rc != SQLITE_OK) {
-        mosquitto_log_printf(MOSQ_LOG_ERR, "Retention cleanup failed: %s", err_msg);
-        sqlite3_free(err_msg);
-    } else {
-        int deleted = sqlite3_changes(msg_db);
-        if (deleted > 0) {
-            mosquitto_log_printf(MOSQ_LOG_INFO, "Retention cleanup: deleted %d messages older than %d days", 
-                                deleted, retention_days);
+    // Use prepared statement for safe deletion
+    if (retention_delete_stmt != NULL) {
+        sqlite3_bind_text(retention_delete_stmt, 1, cutoff_prefix, -1, SQLITE_STATIC);
+        int rc = sqlite3_step(retention_delete_stmt);
+        if (rc != SQLITE_DONE) {
+            mosquitto_log_printf(MOSQ_LOG_ERR, "Retention cleanup failed: %s", sqlite3_errmsg(msg_db));
+        } else {
+            int deleted = sqlite3_changes(msg_db);
+            if (deleted > 0) {
+                mosquitto_log_printf(MOSQ_LOG_INFO, "Retention cleanup: deleted %d messages older than %d days", 
+                                    deleted, retention_days);
+            }
         }
+        sqlite3_reset(retention_delete_stmt);
     }
 }
 
@@ -947,7 +979,7 @@ static int on_message_callback(int event, void *event_data, void *userdata) {
 
     // Check if topic should be excluded from persistence
     if (is_topic_excluded(ed->topic)) {
-        mosquitto_log_printf(MOSQ_LOG_DEBUG, "Excluded topic from persistence: %s", ed->topic);
+        LOG_DEBUG("Excluded topic from persistence: %s", ed->topic);
         // Still add ULID property but don't store in database
         return mosquitto_property_add_string_pair(&ed->properties, MQTT_PROP_USER_PROPERTY, "ulid", ulid);
     }
@@ -966,7 +998,7 @@ static int on_message_callback(int event, void *event_data, void *userdata) {
                                                            &prop_name, &prop_value, skip_first)) != NULL) {
             if (prop_name != NULL && strcmp(prop_name, "ulid") == 0 && prop_value != NULL) {
                 target_ulid = strdup(prop_value);
-                mosquitto_log_printf(MOSQ_LOG_DEBUG, "Found ULID in properties: %s", target_ulid);
+                LOG_DEBUG("Found ULID in properties: %s", target_ulid);
             }
             // Free the strings allocated by mosquitto_property_read_string_pair
             if (prop_name) { free(prop_name); prop_name = NULL; }
@@ -982,12 +1014,12 @@ static int on_message_callback(int event, void *event_data, void *userdata) {
         if (atomic_load(&batch_thread_running)) {
             if (target_ulid != NULL) {
                 enqueue_delete(ed->topic, target_ulid);
-                mosquitto_log_printf(MOSQ_LOG_DEBUG, "Enqueued delete: topic=%s ulid=%s", ed->topic, target_ulid);
+                LOG_DEBUG("Enqueued delete: topic=%s ulid=%s", ed->topic, target_ulid);
                 free(target_ulid);
             } else {
                 // No ULID provided, queue fallback delete (most recent)
                 enqueue_delete(ed->topic, NULL);
-                mosquitto_log_printf(MOSQ_LOG_DEBUG, "Enqueued fallback delete: topic=%s", ed->topic);
+                LOG_DEBUG("Enqueued fallback delete: topic=%s", ed->topic);
             }
         }
         
@@ -1002,8 +1034,8 @@ static int on_message_callback(int event, void *event_data, void *userdata) {
     if (atomic_load(&batch_thread_running)) {
         enqueue_message(ulid, ed->topic, (char *)ed->payload, ed->payloadlen,
                         headers, ed->retain ? 1 : 0, ed->qos);
-        mosquitto_log_printf(MOSQ_LOG_DEBUG, "Enqueued: topic=%s retain=%d qos=%d headers=%s", 
-                            ed->topic, ed->retain, ed->qos, headers ? headers : "(none)");
+        LOG_DEBUG("Enqueued: topic=%s retain=%d qos=%d headers=%s", 
+                  ed->topic, ed->retain, ed->qos, headers ? headers : "(none)");
     }
 
     free(headers);
@@ -1097,6 +1129,14 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
                 mosquitto_log_printf(MOSQ_LOG_INFO, "Index on topic column ensured");
             }
             
+            // Create compound index for efficient "find latest by topic" queries (ORDER BY ulid DESC)
+            const char *idx_topic_ulid_sql = "CREATE INDEX IF NOT EXISTS idx_msg_topic_ulid ON msg(topic, ulid DESC);";
+            rc = sqlite3_exec(msg_db, idx_topic_ulid_sql, NULL, 0, &err_msg);
+            if (rc != SQLITE_OK) {
+                mosquitto_log_printf(MOSQ_LOG_WARNING, "Failed to create topic_ulid index: %s", err_msg);
+                sqlite3_free(err_msg);
+            }
+            
     		rc = sqlite3_prepare_v2(msg_db, "insert into msg (ulid, topic, payload, retain, qos, headers) values (?1, ?2, ?3, ?4, ?5, ?6)", -1, &insert_stmt, 0);
     		if (rc != SQLITE_OK) {
                 mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to prepare insert data statement: %s", sqlite3_errmsg(msg_db));
@@ -1109,6 +1149,22 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
                 -1, &delete_stmt, 0);
             if (rc != SQLITE_OK) {
                 mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to prepare delete statement: %s", sqlite3_errmsg(msg_db));
+            }
+            
+            // Prepare statement for finding latest message ULID for fallback delete
+            rc = sqlite3_prepare_v2(msg_db, 
+                "SELECT ulid FROM msg WHERE topic = ?1 ORDER BY ulid DESC LIMIT 1", 
+                -1, &find_latest_stmt, 0);
+            if (rc != SQLITE_OK) {
+                mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to prepare find_latest statement: %s", sqlite3_errmsg(msg_db));
+            }
+            
+            // Prepare statement for retention cleanup (delete messages older than cutoff)
+            rc = sqlite3_prepare_v2(msg_db, 
+                "DELETE FROM msg WHERE ulid < ?1", 
+                -1, &retention_delete_stmt, 0);
+            if (rc != SQLITE_OK) {
+                mosquitto_log_printf(MOSQ_LOG_ERR, "Failed to prepare retention_delete statement: %s", sqlite3_errmsg(msg_db));
             }
 		}
 	}
@@ -1154,6 +1210,14 @@ int mosquitto_plugin_cleanup(void *user_data, struct mosquitto_opt *opts, int op
 
     if (delete_stmt != NULL) {
         sqlite3_finalize(delete_stmt);
+    }
+    
+    if (find_latest_stmt != NULL) {
+        sqlite3_finalize(find_latest_stmt);
+    }
+    
+    if (retention_delete_stmt != NULL) {
+        sqlite3_finalize(retention_delete_stmt);
     }
 
 	if (msg_db != NULL) {

@@ -106,6 +106,7 @@ if [ -f "$LIBSQL_CONF" ]; then
         value=$(echo "$value" | xargs)
         
         case "$key" in
+            # Network Configuration
             http_listen_addr)
                 SQLD_ARGS="$SQLD_ARGS --http-listen-addr=$value"
                 ;;
@@ -114,9 +115,62 @@ if [ -f "$LIBSQL_CONF" ]; then
                     SQLD_ARGS="$SQLD_ARGS --enable-http-console"
                 fi
                 ;;
+            no_welcome)
+                if [ "$value" = "true" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --no-welcome"
+                fi
+                ;;
+            # Performance Tuning
+            max_concurrent_connections)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --max-concurrent-connections=$value"
+                fi
+                ;;
+            max_concurrent_requests)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --max-concurrent-requests=$value"
+                fi
+                ;;
+            max_response_size)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --max-response-size=$value"
+                fi
+                ;;
+            soft_heap_limit_mb)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --soft-heap-limit-mb=$value"
+                fi
+                ;;
+            hard_heap_limit_mb)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --hard-heap-limit-mb=$value"
+                fi
+                ;;
+            # Stability & Reliability
+            shutdown_timeout)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --shutdown-timeout=$value"
+                fi
+                ;;
+            max_log_size)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --max-log-size=$value"
+                fi
+                ;;
+            max_log_duration)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --max-log-duration=$value"
+                fi
+                ;;
+            # Monitoring
             heartbeat_url)
                 if [ -n "$value" ]; then
                     SQLD_ARGS="$SQLD_ARGS --heartbeat-url=$value"
+                fi
+                ;;
+            heartbeat_period_s)
+                if [ -n "$value" ]; then
+                    SQLD_ARGS="$SQLD_ARGS --heartbeat-period-s=$value"
                 fi
                 ;;
         esac

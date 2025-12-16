@@ -14,22 +14,21 @@ docker build --no-cache --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t mqt
 
 To start the MQTT SQL Admin as Docker Swarm service
 ```bash
-docker network create --driver overlay dev-proxy
+docker network create --driver overlay proxy
 docker secret create dynsec.json mosquitto/config/dynsec.json
 docker secret create msa.secrets msa.secrets
-docker secret create msa.properties msa.properties
 docker stack deploy -c compose.yml msa
 ```
 
 The `msa.secrets` file contains environment variables for the admin UI and the MQTT broker:
 ```
-MSA_USER=admin:changeme
+MSA_USER=admin:admin
 MSA_MQTT_USER=admin:admin
 ```
 
 | Variable | Description |
 |----------|-------------|
-| `MSA_USER` | MSA admin credentials in `username:password` format (for `/db-admin/` HTTP Basic Auth) |
+| `MSA_USER` | MSA admin credentials in `username:password` format (for HTTP Basic Auth) |
 | `MSA_MQTT_USER` | MQTT broker credentials in `username:password` format (for admin UI to connect to broker) |
 
 The `msa.properties` file contains application configuration:

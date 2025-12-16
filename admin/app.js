@@ -1078,7 +1078,7 @@ function executeDeleteRetainedMessage(topic, ulid) {
     // Build publish options with retain flag
     const publishOptions = { 
         retain: true, 
-        qos: 1
+        qos: 2
     };
     
     // If ULID is available, pass it as a user property for targeted deletion

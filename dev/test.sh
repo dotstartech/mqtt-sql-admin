@@ -17,7 +17,7 @@ ADMIN_USER="${MQTT_ADMIN_USER:-admin}"
 ADMIN_PASS="${MQTT_ADMIN_PASS:-admin}"
 DB_URL="${DB_URL:-http://127.0.0.1:8080/db-admin}"
 DB_USER="${DB_USER:-admin}"
-DB_PASS="${DB_PASS:-changeme}"
+DB_PASS="${DB_PASS:-admin}"
 ADMIN_URL="${ADMIN_URL:-http://127.0.0.1:8080}"
 
 # Colors for output

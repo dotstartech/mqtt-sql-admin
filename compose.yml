@@ -21,19 +21,18 @@ services:
       - 8080:8080
       - 9001:9001
     networks:
-      - dev-proxy
+      - proxy
+    env_file:
+      - msa.properties
     secrets:
       - dynsec.json
       - msa.secrets
-      - msa.properties
     restart: always
 
 secrets:
   dynsec.json:
     external: true
   msa.secrets:
-    external: true
-  msa.properties:
     external: true
 
 volumes:
@@ -43,7 +42,7 @@ volumes:
     name: msa-log
 
 networks:
-  dev-proxy:
+  proxy:
     driver: overlay
-    name: dev-proxy
+    name: proxy
     attachable: true

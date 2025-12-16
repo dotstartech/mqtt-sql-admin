@@ -44,7 +44,7 @@ if [ "$user" = '0' ]; then
 			chmod 644 /tmp/mqtt-credentials.json
 		fi
 		
-		# Extract MSA_USER value (format: username:password) for /db-admin/ HTTP Basic Auth
+		# Extract MSA_USER value (format: username:password) for HTTP Basic Auth
 		db_user=$(grep "^MSA_USER=" /run/secrets/msa.secrets | cut -d'=' -f2)
 		if [ -n "$db_user" ]; then
 			db_username=$(echo "$db_user" | cut -d':' -f1)
@@ -54,37 +54,30 @@ if [ "$user" = '0' ]; then
 			chown admin:admin /tmp/htpasswd
 			chmod 644 /tmp/htpasswd
 		else
-			echo "WARNING: MSA_USER not set in msa.secrets, using default 'admin:changeme'"
-			echo "admin:$(echo -n 'changeme' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
+			echo "WARNING: MSA_USER not set in msa.secrets, using default 'admin:admin'"
+			echo "admin:$(echo -n 'admin' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
 			chown admin:admin /tmp/htpasswd
 			chmod 644 /tmp/htpasswd
 		fi
 	else
 		# Create default credentials if no secrets file
 		echo "WARNING: msa.secrets not found, using default credentials"
-		echo "admin:$(echo -n 'changeme' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
+		echo "admin:$(echo -n 'admin' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
 		chown admin:admin /tmp/htpasswd
 		chmod 644 /tmp/htpasswd
 	fi
 	
-	# Parse msa.properties and create app config JSON for web client
-	if [ -f /run/secrets/msa.properties ]; then
-		# Extract version, title, logo, and favicon values
-		app_version=$(grep "^version=" /run/secrets/msa.properties | cut -d'=' -f2-)
-		app_title=$(grep "^title=" /run/secrets/msa.properties | cut -d'=' -f2-)
-		app_logo=$(grep "^logo=" /run/secrets/msa.properties | cut -d'=' -f2-)
-		app_favicon=$(grep "^favicon=" /run/secrets/msa.properties | cut -d'=' -f2-)
-		
-		# Create JSON file with version, title, logo, and favicon (empty values if not set)
-		echo "{\"version\":\"${app_version}\",\"title\":\"${app_title}\",\"logo\":\"${app_logo}\",\"favicon\":\"${app_favicon}\"}" > /tmp/app-config.json
-		chown admin:admin /tmp/app-config.json
-		chmod 644 /tmp/app-config.json
-	else
-		# Create empty config if no properties file
-		echo "{\"version\":\"\",\"title\":\"\",\"logo\":\"\",\"favicon\":\"\"}" > /tmp/app-config.json
-		chown admin:admin /tmp/app-config.json
-		chmod 644 /tmp/app-config.json
-	fi
+	# Create app config JSON from environment variables
+	# These come from msa.properties via env_file in compose.yml
+	app_version="${version:-}"
+	app_title="${title:-}"
+	app_logo="${logo:-}"
+	app_favicon="${favicon:-}"
+	
+	# Create JSON file with version, title, logo, and favicon (empty values if not set)
+	echo "{\"version\":\"${app_version}\",\"title\":\"${app_title}\",\"logo\":\"${app_logo}\",\"favicon\":\"${app_favicon}\"}" > /tmp/app-config.json
+	chown admin:admin /tmp/app-config.json
+	chmod 644 /tmp/app-config.json
 	
 	# Switch to admin user and execute the command
 	exec su-exec admin "$@"

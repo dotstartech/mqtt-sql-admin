@@ -757,6 +757,12 @@ td.actions {
     vertical-align: middle;
 }
 
+/* Broker tab actions column - center aligned for single trash icon */
+#mqtt-messages-table td.actions {
+    text-align: center;
+    width: 60px;
+}
+
 .action-btn {
     padding: 4px 10px;
     border: none;

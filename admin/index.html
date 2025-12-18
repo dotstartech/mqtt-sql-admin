@@ -198,7 +198,7 @@
                 </div>
             </div>
             <div class="broker-section">
-                <h3>Clients</h3>
+                <h3>Clients <button class="action-btn create-btn" onclick="openCreateClientModal()">Create</button></h3>
                 <div class="broker-content">
                     <table class="acl-table" id="clients-table">
                         <thead>
@@ -206,6 +206,7 @@
                                 <th>Username</th>
                                 <th>Display Name</th>
                                 <th>Roles</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -308,6 +309,43 @@
         </div>
     </div>
 </div>
+
+<!-- Client Modal (Create/Edit) -->
+<div id="clientModal" class="modal-overlay" onclick="closeClientModalOnOverlay(event)">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="clientModalTitle">Create Client</h2>
+            <button class="modal-close" onclick="closeClientModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <form id="clientForm" onsubmit="handleClientSubmit(event)">
+                <input type="hidden" id="clientEditMode" value="create">
+                <div class="form-group">
+                    <label for="clientUsername">Username</label>
+                    <input type="text" id="clientUsername" required>
+                </div>
+                <div class="form-group">
+                    <label for="clientDisplayName">Display Name</label>
+                    <input type="text" id="clientDisplayName">
+                </div>
+                <div class="form-group">
+                    <label for="clientPassword">Password</label>
+                    <input type="password" id="clientPassword" autocomplete="new-password">
+                    <small id="clientPasswordHint" class="form-hint"></small>
+                </div>
+                <div class="form-group">
+                    <label>Roles</label>
+                    <div id="clientRolesCheckboxes" class="checkbox-group"></div>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="modal-btn modal-btn-cancel" onclick="closeClientModal()">Cancel</button>
+                    <button type="submit" class="modal-btn modal-btn-submit" id="clientSubmitBtn">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
 

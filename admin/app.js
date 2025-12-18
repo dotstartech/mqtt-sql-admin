@@ -774,6 +774,9 @@ async function loadBrokerConfig() {
         displayRoles(config.roles || []);
         displayDefaultACL(config.defaultACLAccess || {});
         
+        // Store roles globally for client modal
+        window.availableRoles = config.roles || [];
+        
         window.aclDataLoaded = true;
     } catch (error) {
         console.error('Error loading ACL config:', error);
@@ -791,12 +794,17 @@ function displayClients(clients) {
     clients.forEach(client => {
         const roles = (client.roles || []).map(r => r.rolename).join(', ');
         const displayName = client.textname || '-';
+        const escapedUsername = client.username.replace(/'/g, "\\'");
         
         const row = document.createElement('tr');
         row.innerHTML = `
             <td class="topic">${client.username}</td>
             <td>${displayName}</td>
-            <td class="payload">${roles}</td>
+            <td class="payload">${roles || '-'}</td>
+            <td class="actions">
+                <button class="action-btn edit-btn" onclick="openEditClientModal('${escapedUsername}')">Edit</button>
+                <button class="action-btn delete-btn" onclick="confirmDeleteClient('${escapedUsername}')">Delete</button>
+            </td>
         `;
         tbody.appendChild(row);
     });
@@ -809,9 +817,18 @@ function displayRoles(roles) {
     roles.forEach(role => {
         const acls = role.acls || [];
         
-        let aclsHtml = '';
+        // Group ACLs by type
+        const aclsByType = {};
         acls.forEach(acl => {
-            aclsHtml += `<div class="acl-item">${acl.acltype}: ${acl.topic}</div>`;
+            if (!aclsByType[acl.acltype]) {
+                aclsByType[acl.acltype] = [];
+            }
+            aclsByType[acl.acltype].push(acl.topic);
+        });
+        
+        let aclsHtml = '';
+        Object.entries(aclsByType).forEach(([acltype, topics]) => {
+            aclsHtml += `<div class="acl-item"><strong>${acltype}:</strong> ${topics.join(', ')}</div>`;
         });
         
         const row = document.createElement('tr');
@@ -875,6 +892,224 @@ async function toggleDefaultACL(aclType, allowed) {
         } else {
             showMessage(`Default ACL '${aclType}' set to ${allowed ? 'Allowed' : 'Denied'}`, 'success');
             // Reload to confirm the change
+            setTimeout(() => loadBrokerConfig(), 500);
+        }
+    });
+}
+
+// =============================================================================
+// Client CRUD Functions
+// =============================================================================
+
+function openCreateClientModal() {
+    document.getElementById('clientModalTitle').textContent = 'Create Client';
+    document.getElementById('clientEditMode').value = 'create';
+    document.getElementById('clientUsername').value = '';
+    document.getElementById('clientUsername').disabled = false;
+    document.getElementById('clientDisplayName').value = '';
+    document.getElementById('clientPassword').value = '';
+    document.getElementById('clientPassword').required = true;
+    document.getElementById('clientPasswordHint').textContent = 'Required for new client';
+    document.getElementById('clientSubmitBtn').textContent = 'Create';
+    
+    populateRolesCheckboxes([]);
+    document.getElementById('clientModal').classList.add('active');
+}
+
+function openEditClientModal(username) {
+    // Find the client data from the table or fetch it
+    const clientRow = Array.from(document.querySelectorAll('#clients-table tbody tr'))
+        .find(row => row.querySelector('td').textContent === username);
+    
+    if (!clientRow) {
+        showMessage('Client not found', 'error');
+        return;
+    }
+    
+    const cells = clientRow.querySelectorAll('td');
+    const displayName = cells[1].textContent === '-' ? '' : cells[1].textContent;
+    const rolesText = cells[2].textContent === '-' ? '' : cells[2].textContent;
+    const clientRoles = rolesText ? rolesText.split(', ').map(r => r.trim()) : [];
+    
+    document.getElementById('clientModalTitle').textContent = 'Edit Client';
+    document.getElementById('clientEditMode').value = username;
+    document.getElementById('clientUsername').value = username;
+    document.getElementById('clientUsername').disabled = true;
+    document.getElementById('clientDisplayName').value = displayName;
+    document.getElementById('clientPassword').value = '';
+    document.getElementById('clientPassword').required = false;
+    document.getElementById('clientPasswordHint').textContent = 'Leave blank to keep current password';
+    document.getElementById('clientSubmitBtn').textContent = 'Save';
+    
+    populateRolesCheckboxes(clientRoles);
+    document.getElementById('clientModal').classList.add('active');
+}
+
+function populateRolesCheckboxes(selectedRoles) {
+    const container = document.getElementById('clientRolesCheckboxes');
+    const roles = window.availableRoles || [];
+    
+    if (roles.length === 0) {
+        container.innerHTML = '<span class="no-roles">No roles available</span>';
+        return;
+    }
+    
+    container.innerHTML = roles.map(role => {
+        const checked = selectedRoles.includes(role.rolename) ? 'checked' : '';
+        return `
+            <label class="checkbox-label">
+                <input type="checkbox" name="clientRoles" value="${role.rolename}" ${checked}>
+                <span>${role.rolename}</span>
+            </label>
+        `;
+    }).join('');
+}
+
+function closeClientModal() {
+    document.getElementById('clientModal').classList.remove('active');
+}
+
+function closeClientModalOnOverlay(event) {
+    if (event.target.id === 'clientModal') {
+        closeClientModal();
+    }
+}
+
+async function handleClientSubmit(event) {
+    event.preventDefault();
+    
+    if (!mqttClient || !mqttClient.connected) {
+        showMessage('MQTT not connected. Please connect first.', 'error');
+        return;
+    }
+    
+    const editMode = document.getElementById('clientEditMode').value;
+    const username = document.getElementById('clientUsername').value.trim();
+    const displayName = document.getElementById('clientDisplayName').value.trim();
+    const password = document.getElementById('clientPassword').value;
+    
+    const selectedRoles = Array.from(document.querySelectorAll('input[name="clientRoles"]:checked'))
+        .map(cb => cb.value);
+    
+    if (editMode === 'create') {
+        await createClient(username, displayName, password, selectedRoles);
+    } else {
+        await updateClient(editMode, displayName, password, selectedRoles);
+    }
+}
+
+async function createClient(username, displayName, password, roles) {
+    const commands = [];
+    
+    // Create client command
+    const createCmd = {
+        command: 'createClient',
+        username: username,
+        password: password
+    };
+    if (displayName) {
+        createCmd.textname = displayName;
+    }
+    commands.push(createCmd);
+    
+    // Add role assignments
+    roles.forEach(rolename => {
+        commands.push({
+            command: 'addClientRole',
+            username: username,
+            rolename: rolename
+        });
+    });
+    
+    sendClientCommands(commands, `Client '${username}' created successfully`);
+}
+
+async function updateClient(username, displayName, password, newRoles) {
+    const commands = [];
+    
+    // Modify client command for textname and password
+    const modifyCmd = {
+        command: 'modifyClient',
+        username: username
+    };
+    if (displayName !== undefined) {
+        modifyCmd.textname = displayName || '';
+    }
+    if (password) {
+        modifyCmd.password = password;
+    }
+    commands.push(modifyCmd);
+    
+    // Get current roles from the table
+    const clientRow = Array.from(document.querySelectorAll('#clients-table tbody tr'))
+        .find(row => row.querySelector('td').textContent === username);
+    const rolesText = clientRow ? clientRow.querySelectorAll('td')[2].textContent : '';
+    const currentRoles = rolesText && rolesText !== '-' ? rolesText.split(', ').map(r => r.trim()) : [];
+    
+    // Calculate roles to add and remove
+    const rolesToAdd = newRoles.filter(r => !currentRoles.includes(r));
+    const rolesToRemove = currentRoles.filter(r => !newRoles.includes(r));
+    
+    rolesToAdd.forEach(rolename => {
+        commands.push({
+            command: 'addClientRole',
+            username: username,
+            rolename: rolename
+        });
+    });
+    
+    rolesToRemove.forEach(rolename => {
+        commands.push({
+            command: 'removeClientRole',
+            username: username,
+            rolename: rolename
+        });
+    });
+    
+    sendClientCommands(commands, `Client '${username}' updated successfully`);
+}
+
+function confirmDeleteClient(username) {
+    showConfirmModal(
+        `Are you sure you want to delete client '${username}'?`,
+        () => deleteClient(username)
+    );
+}
+
+async function deleteClient(username) {
+    if (!mqttClient || !mqttClient.connected) {
+        showMessage('MQTT not connected. Please connect first.', 'error');
+        return;
+    }
+    
+    const command = {
+        commands: [{
+            command: 'deleteClient',
+            username: username
+        }]
+    };
+    
+    const topic = '$CONTROL/dynamic-security/v1';
+    mqttClient.publish(topic, JSON.stringify(command), { qos: 1 }, (err) => {
+        if (err) {
+            showMessage(`Failed to delete client: ${err.message}`, 'error');
+        } else {
+            showMessage(`Client '${username}' deleted successfully`, 'success');
+            setTimeout(() => loadBrokerConfig(), 500);
+        }
+    });
+}
+
+function sendClientCommands(commands, successMessage) {
+    const topic = '$CONTROL/dynamic-security/v1';
+    const message = JSON.stringify({ commands });
+    
+    mqttClient.publish(topic, message, { qos: 1 }, (err) => {
+        if (err) {
+            showMessage(`Operation failed: ${err.message}`, 'error');
+        } else {
+            showMessage(successMessage, 'success');
+            closeClientModal();
             setTimeout(() => loadBrokerConfig(), 500);
         }
     });

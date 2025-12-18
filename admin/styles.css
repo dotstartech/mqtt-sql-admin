@@ -516,6 +516,9 @@ td:first-child {
     background: var(--ctp-surface0);
     border-radius: 2px;
     font-size: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .broker-content {
@@ -716,9 +719,53 @@ td.retained {
 
 /* Actions column styling */
 td.actions {
-    text-align: center;
-    width: 60px;
+    text-align: right;
+    white-space: nowrap;
+    width: 120px;
     vertical-align: middle;
+}
+
+.action-btn {
+    padding: 4px 10px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.action-btn.create-btn {
+    background: var(--ctp-green);
+    color: var(--ctp-base);
+    height: 24px;
+}
+
+.action-btn.create-btn:hover {
+    background: var(--ctp-teal);
+}
+
+.action-btn.edit-btn {
+    background: var(--ctp-blue);
+    color: var(--ctp-base);
+    margin-right: 6px;
+    min-width: 50px;
+    height: 24px;
+}
+
+.action-btn.edit-btn:hover {
+    background: var(--ctp-sapphire);
+}
+
+.action-btn.delete-btn {
+    background: var(--ctp-red);
+    color: var(--ctp-base);
+    min-width: 50px;
+    height: 24px;
+}
+
+.action-btn.delete-btn:hover {
+    background: var(--ctp-maroon);
 }
 
 .delete-btn {
@@ -1018,6 +1065,15 @@ td.actions {
     background: var(--ctp-maroon);
 }
 
+.modal-btn-submit {
+    background: var(--ctp-green);
+    color: var(--ctp-base);
+}
+
+.modal-btn-submit:hover {
+    background: var(--ctp-teal);
+}
+
 .modal-btn-login {
     background: var(--ctp-blue);
     color: var(--ctp-base);
@@ -1080,6 +1136,58 @@ td.actions {
     outline: none;
     border-color: var(--ctp-blue);
     box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+}
+
+.form-group input:disabled {
+    background: var(--ctp-surface0);
+    color: var(--ctp-overlay1);
+    cursor: not-allowed;
+}
+
+.form-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--ctp-overlay1);
+}
+
+.checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px;
+    background: var(--ctp-surface0);
+    border-radius: 4px;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--ctp-mantle);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.checkbox-label:hover {
+    background: var(--ctp-surface1);
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--ctp-blue);
+    cursor: pointer;
+}
+
+.no-roles {
+    color: var(--ctp-overlay1);
+    font-style: italic;
 }
 
 .login-error {

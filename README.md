@@ -15,7 +15,6 @@ docker build --no-cache --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t mqt
 To start the MQTT SQL Admin as Docker Swarm service
 ```bash
 docker network create --driver overlay proxy
-docker secret create dynsec.json mosquitto/config/dynsec.json
 docker secret create msa.secrets msa.secrets
 docker stack deploy -c compose.yml msa
 ```

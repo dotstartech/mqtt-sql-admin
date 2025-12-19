@@ -763,9 +763,9 @@ td.retained {
 
 /* Actions column styling */
 td.actions {
-    text-align: right;
+    text-align: center;
     white-space: nowrap;
-    width: 120px;
+    width: 70px;
     vertical-align: middle;
 }
 
@@ -814,25 +814,52 @@ td.actions {
     background: var(--ctp-maroon);
 }
 
-/* Trash icon button for Broker tab - must not have action-btn class */
-#mqtt-messages-table .delete-btn {
+/* Icon buttons for ACL tab (edit/delete) */
+.icon-btn {
     background: transparent;
     border: none;
-    padding: 0;
-    margin: 0;
+    padding: 4px;
+    margin: 0 2px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 16px;
     line-height: 1;
-    height: 16px;
+    height: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.2s;
+    transition: all 0.3s;
     opacity: 0.7;
+    border-radius: 2px;
+}
+
+.icon-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+    background: var(--ctp-surface0);
+}
+
+/* Trash icon button for Broker tab - same style as ACL tab icons */
+#mqtt-messages-table .delete-btn {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    margin: 0;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    height: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+    opacity: 0.7;
+    border-radius: 2px;
 }
 
 #mqtt-messages-table .delete-btn:hover {
     opacity: 1;
+    transform: scale(1.1);
+    background: var(--ctp-surface0);
 }
 
 /* Vertical separator for controls */

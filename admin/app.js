@@ -814,8 +814,8 @@ function displayClients(clients) {
             <td>${displayName}</td>
             <td class="payload">${roles || '-'}</td>
             <td class="actions">
-                <button class="action-btn edit-btn" onclick="openEditClientModal('${escapedUsername}')">Edit</button>
-                <button class="action-btn delete-btn" onclick="confirmDeleteClient('${escapedUsername}')">Delete</button>
+                <button class="icon-btn edit-btn" onclick="openEditClientModal('${escapedUsername}')" title="Edit client">✏️</button>
+                <button class="icon-btn delete-btn" onclick="confirmDeleteClient('${escapedUsername}')" title="Delete client">🗑️</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -849,8 +849,8 @@ function displayRoles(roles) {
             <td class="topic">${role.rolename}</td>
             <td>${aclsHtml || '-'}</td>
             <td class="actions">
-                <button class="action-btn edit-btn" onclick="openEditRoleModal('${escapedRolename}')">Edit</button>
-                <button class="action-btn delete-btn" onclick="confirmDeleteRole('${escapedRolename}')">Delete</button>
+                <button class="icon-btn edit-btn" onclick="openEditRoleModal('${escapedRolename}')" title="Edit role">✏️</button>
+                <button class="icon-btn delete-btn" onclick="confirmDeleteRole('${escapedRolename}')" title="Delete role">🗑️</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -1188,7 +1188,7 @@ function renderAclsList() {
         <div class="acl-edit-item">
             <span class="acl-edit-type">${acl.acltype}</span>
             <span class="acl-edit-topic">${acl.topic}</span>
-            <button type="button" class="action-btn delete-btn" onclick="removeAclFromList(${index})">Remove</button>
+            <button type="button" class="icon-btn delete-btn" onclick="removeAclFromList(${index})" title="Remove ACL">🗑️</button>
         </div>
     `).join('');
 }

@@ -6,31 +6,118 @@ mqBase is based on [Mosquitto](https://github.com/eclipse-mosquitto/mosquitto) M
  - Message persistency in local libSQL database with remote HTTP access
  - Admin web UI (served by internal Nginx) with database and broker views and ACL editor
 
-## Development
-To build Docker image run from the project's root directory
+## Quick Start
+
+### Option 1: Docker Compose (recommended)
+
 ```bash
-docker build --no-cache --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t mqbase:latest -f ./docker/Dockerfile .
+# Build and run with default credentials (admin:admin)
+docker compose up -d
+
+# Or with custom credentials
+MQBASE_USER=myuser:mypass MQBASE_MQTT_USER=mqtt:mqttpass docker compose up -d
 ```
 
-The `mqbase.secrets` file contains environment variables for the admin UI and the MQTT broker:
+### Option 2: Docker Run (single command)
+
+```bash
+# With auto-generated credentials (check logs for passwords)
+docker run -d --name mqbase -p 1883:1883 -p 8080:8080 -p 9001:9001 mqbase:latest
+
+# With explicit credentials
+docker run -d --name mqbase \
+  -e MQBASE_USER=admin:admin \
+  -e MQBASE_MQTT_USER=admin:admin \
+  -p 1883:1883 -p 8080:8080 -p 9001:9001 \
+  mqbase:latest
 ```
-MQBASE_USER=admin:admin
-MQBASE_MQTT_USER=admin:admin
+
+### Option 3: Docker Swarm (production)
+
+```bash
+docker secret create mqbase.secrets mqbase.secrets
+docker stack deploy -c compose.swarm.yml mqbase
+```
+
+Open [localhost:8080](http://localhost:8080) in your browser.
+
+## Credentials Configuration
+
+mqBase supports multiple methods for providing credentials, with the following priority:
+
+| Priority | Method | Use Case |
+|----------|--------|----------|
+| 1 | Docker secrets (`/run/secrets/mqbase.secrets`) | Production (Swarm/Kubernetes) |
+| 2 | Environment variables | Docker Compose, `docker run -e` |
+| 3 | Mounted config file (`/mosquitto/config/secrets.conf`) | File-based configuration |
+| 4 | Auto-generate | Quick demos (credentials printed to logs) |
+
+### Credentials Format
+
+Both `MQBASE_USER` and `MQBASE_MQTT_USER` use the format `username:password`:
+
+```bash
+MQBASE_USER=admin:secretpass
+MQBASE_MQTT_USER=mqtt:mqttpass
 ```
 
 | Variable | Description |
 |----------|-------------|
-| `MQBASE_USER` | mqBase admin credentials in `username:password` format (for HTTP Basic Auth) |
-| `MQBASE_MQTT_USER` | MQTT broker credentials in `username:password` format (for admin UI to connect to broker) |
+| `MQBASE_USER` | HTTP Basic Auth credentials for admin UI and database API |
+| `MQBASE_MQTT_USER` | MQTT broker credentials (used by admin UI to connect to broker) |
 
-To start mqBase as Docker Swarm service
+### Using Environment Variables
+
 ```bash
-docker network create --driver overlay proxy
-docker secret create mqbase.secrets mqbase.secrets
-docker stack deploy -c compose.yml mqbase
+# Docker run
+docker run -e MQBASE_USER=admin:mypass -e MQBASE_MQTT_USER=admin:mypass mqbase:latest
+
+# Docker Compose (in compose.simple.yml or .env file)
+environment:
+  - MQBASE_USER=admin:mypass
+  - MQBASE_MQTT_USER=admin:mypass
 ```
 
-Open [localhost:8080/msg-admin](localhost:8080/msg-admin) or [127.0.0.1:8080/msg-admin](127.0.0.1:8080/msg-admin) in your browser
+### Using a Secrets File
+
+Create a `secrets.conf` file and mount it:
+
+```bash
+# secrets.conf
+MQBASE_USER=admin:secretpass
+MQBASE_MQTT_USER=mqtt:mqttpass
+```
+
+```bash
+docker run -v ./secrets.conf:/mosquitto/config/secrets.conf:ro mqbase:latest
+```
+
+### Auto-Generated Credentials
+
+If no credentials are provided, mqBase will auto-generate secure random passwords and print them to the container logs:
+
+```bash
+docker logs mqbase
+# ==============================================
+# WARNING: No MQBASE_USER credentials found!
+# Auto-generated credentials for HTTP Basic Auth:
+#   Username: admin
+#   Password: xK7mN2pQ9rT4wY6z
+# ==============================================
+```
+
+## Building
+
+To build the Docker image:
+
+```bash
+docker build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t mqbase:latest -f ./docker/Dockerfile .
+
+# Or use the build script
+./docker/build.sh
+```
+
+## Application Configuration
 
 The `mqbase.properties` file contains application configuration:
 ```properties

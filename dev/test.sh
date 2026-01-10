@@ -529,34 +529,22 @@ fi
 log_section "Section 5: HTTP Endpoints"
 
 # -----------------------------------------
-# Test 15: Admin UI endpoint
+# Test 15: Admin UI endpoint (root)
 # -----------------------------------------
 echo ""
-echo "--- Test 15: Admin UI endpoint ---"
-STATUS=$(http_status "$ADMIN_URL/msg-admin")
+echo "--- Test 15: Admin UI endpoint (root) ---"
+STATUS=$(http_status "$ADMIN_URL/")
 if [ "$STATUS" = "200" ]; then
-    log_pass "/msg-admin returns 200"
+    log_pass "/ (Admin UI) returns 200"
 else
-    log_fail "/msg-admin returns $STATUS (expected 200)"
+    log_fail "/ (Admin UI) returns $STATUS (expected 200)"
 fi
 
 # -----------------------------------------
-# Test 16: Admin UI with trailing slash
+# Test 16: Static files (CSS)
 # -----------------------------------------
 echo ""
-echo "--- Test 16: Admin UI trailing slash ---"
-STATUS=$(http_status "$ADMIN_URL/msg-admin/")
-if [ "$STATUS" = "200" ]; then
-    log_pass "/msg-admin/ returns 200"
-else
-    log_fail "/msg-admin/ returns $STATUS (expected 200)"
-fi
-
-# -----------------------------------------
-# Test 17: Static files (CSS)
-# -----------------------------------------
-echo ""
-echo "--- Test 17: Static CSS file ---"
+echo "--- Test 16: Static CSS file ---"
 STATUS=$(http_status "$ADMIN_URL/admin/styles.css")
 if [ "$STATUS" = "200" ]; then
     log_pass "/admin/styles.css returns 200"
@@ -565,10 +553,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 18: Static files (JS)
+# Test 17: Static files (JS)
 # -----------------------------------------
 echo ""
-echo "--- Test 18: Static JS file ---"
+echo "--- Test 17: Static JS file ---"
 STATUS=$(http_status "$ADMIN_URL/admin/app.js")
 if [ "$STATUS" = "200" ]; then
     log_pass "/admin/app.js returns 200"
@@ -577,10 +565,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 19: Database API endpoint
+# Test 18: Database API endpoint
 # -----------------------------------------
 echo ""
-echo "--- Test 19: Database API endpoint ---"
+echo "--- Test 18: Database API endpoint ---"
 RESPONSE=$(db_execute "SELECT 1")
 if [[ "$RESPONSE" == *"result"* ]]; then
     log_pass "Database API responds correctly"
@@ -589,10 +577,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 20: App config endpoint
+# Test 19: App config endpoint
 # -----------------------------------------
 echo ""
-echo "--- Test 20: App config endpoint ---"
+echo "--- Test 19: App config endpoint ---"
 RESPONSE=$(curl -s "$ADMIN_URL/app-config")
 if [[ "$RESPONSE" == *"title"* ]] && [[ "$RESPONSE" == *"logo"* ]]; then
     log_pass "/app-config returns title and logo"
@@ -601,10 +589,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 21: MQTT credentials endpoint
+# Test 20: MQTT credentials endpoint
 # -----------------------------------------
 echo ""
-echo "--- Test 21: MQTT credentials endpoint ---"
+echo "--- Test 20: MQTT credentials endpoint ---"
 RESPONSE=$(curl -s -u "$DB_USER:$DB_PASS" "$ADMIN_URL/mqtt-credentials")
 if [[ "$RESPONSE" == *"username"* ]] && [[ "$RESPONSE" == *"password"* ]]; then
     log_pass "/mqtt-credentials returns credentials"
@@ -613,10 +601,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 22: Broker config endpoint
+# Test 21: Broker config endpoint
 # -----------------------------------------
 echo ""
-echo "--- Test 22: Broker config endpoint ---"
+echo "--- Test 21: Broker config endpoint ---"
 RESPONSE=$(curl -s -u "$DB_USER:$DB_PASS" "$ADMIN_URL/broker-config")
 if [[ "$RESPONSE" == *"clients"* ]] || [[ "$RESPONSE" == *"roles"* ]]; then
     log_pass "/broker-config returns dynsec config"
@@ -625,10 +613,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 23: Health endpoint
+# Test 22: Health endpoint
 # -----------------------------------------
 echo ""
-echo "--- Test 23: Health endpoint ---"
+echo "--- Test 22: Health endpoint ---"
 STATUS=$(http_status "$ADMIN_URL/health")
 RESPONSE=$(curl -s "$ADMIN_URL/health")
 if [ "$STATUS" = "200" ] && [ "$RESPONSE" = "OK" ]; then
@@ -643,10 +631,10 @@ fi
 log_section "Section 6: Edge Cases and Special Characters"
 
 # -----------------------------------------
-# Test 24: JSON payload with special characters
+# Test 23: JSON payload with special characters
 # -----------------------------------------
 echo ""
-echo "--- Test 24: Special characters in payload ---"
+echo "--- Test 23: Special characters in payload ---"
 TOPIC_SPECIAL="data/test/special_$TEST_ID"
 MSG_SPECIAL='{"text":"Hello \"World\"","emoji":"🚀","unicode":"日本語"}'
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_SPECIAL" -m "$MSG_SPECIAL" -q 1
@@ -660,10 +648,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 25: Large payload
+# Test 24: Large payload
 # -----------------------------------------
 echo ""
-echo "--- Test 25: Large payload ---"
+echo "--- Test 24: Large payload ---"
 TOPIC_LARGE="data/test/large_$TEST_ID"
 LARGE_PAYLOAD=$(python3 -c "import json; print(json.dumps({'data': 'x' * 10000}))")
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_LARGE" -m "$LARGE_PAYLOAD" -q 1
@@ -677,10 +665,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 26: Multi-level topic
+# Test 25: Multi-level topic
 # -----------------------------------------
 echo ""
-echo "--- Test 26: Multi-level topic ---"
+echo "--- Test 25: Multi-level topic ---"
 TOPIC_MULTI="data/test/level1/level2/level3/level4_$TEST_ID"
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_MULTI" -m '{"deep":true}' -q 1
 sleep 0.5
@@ -693,10 +681,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 27: Topic with numbers
+# Test 26: Topic with numbers
 # -----------------------------------------
 echo ""
-echo "--- Test 27: Topic with numbers ---"
+echo "--- Test 26: Topic with numbers ---"
 TOPIC_NUMBERS="data/test/device123/sensor456_$TEST_ID"
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_NUMBERS" -m '{"num":true}' -q 1
 sleep 0.5
@@ -709,10 +697,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 28: Empty payload
+# Test 27: Empty payload
 # -----------------------------------------
 echo ""
-echo "--- Test 28: Empty payload ---"
+echo "--- Test 27: Empty payload ---"
 TOPIC_EMPTY="data/test/empty_payload_$TEST_ID"
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_EMPTY" -m '' -q 1
 sleep 0.5
@@ -730,10 +718,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 29: Binary payload
+# Test 28: Binary payload
 # -----------------------------------------
 echo ""
-echo "--- Test 29: Binary payload ---"
+echo "--- Test 28: Binary payload ---"
 TOPIC_BINARY="data/test/binary_payload_$TEST_ID"
 # Generate 100 bytes of random binary data and send it
 BINARY_DATA=$(head -c 100 /dev/urandom | base64)
@@ -753,10 +741,10 @@ fi
 log_section "Section 7: Topic Exclusion Patterns"
 
 # -----------------------------------------
-# Test 30: cmd/# exclusion (multi-level)
+# Test 29: cmd/# exclusion (multi-level)
 # -----------------------------------------
 echo ""
-echo "--- Test 30: cmd/# exclusion (multi-level) ---"
+echo "--- Test 29: cmd/# exclusion (multi-level) ---"
 TOPIC_CMD_DEEP="cmd/test/deep/nested/action_$TEST_ID"
 COUNT_BEFORE=$(db_count)
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_CMD_DEEP" -m '{"excluded":true}' -q 0
@@ -770,10 +758,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 31: +/test/exclude/# exclusion pattern
+# Test 30: +/test/exclude/# exclusion pattern
 # -----------------------------------------
 echo ""
-echo "--- Test 31: +/test/exclude/# exclusion pattern ---"
+echo "--- Test 30: +/test/exclude/# exclusion pattern ---"
 # mosquitto.conf has: plugin_opt_exclude_topics cmd/#,+/test/exclude/#
 TOPIC_EXCL_PATTERN="data/test/exclude/sensor_$TEST_ID"
 COUNT_BEFORE=$(db_count)
@@ -788,10 +776,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 32: data/test/# NOT excluded
+# Test 31: data/test/# NOT excluded
 # -----------------------------------------
 echo ""
-echo "--- Test 32: data/test/# NOT excluded ---"
+echo "--- Test 31: data/test/# NOT excluded ---"
 TOPIC_DATA="data/test/should_persist_$TEST_ID"
 COUNT_BEFORE=$(db_count)
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_DATA" -m '{"persist":true}' -q 1
@@ -810,10 +798,10 @@ fi
 log_section "Section 8: ULID Timestamp Validation"
 
 # -----------------------------------------
-# Test 33: Timestamp from ULID is recent (within last minute)
+# Test 32: Timestamp from ULID is recent (within last minute)
 # -----------------------------------------
 echo ""
-echo "--- Test 33: ULID timestamp is recent ---"
+echo "--- Test 32: ULID timestamp is recent ---"
 TOPIC_TS="data/test/timestamp_$TEST_ID"
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" -t "$TOPIC_TS" -m '{"ts_test":true}' -q 1
 sleep 0.5
@@ -855,10 +843,10 @@ fi
 log_section "Section 9: Concurrent Messages"
 
 # -----------------------------------------
-# Test 34: Rapid fire messages
+# Test 33: Rapid fire messages
 # -----------------------------------------
 echo ""
-echo "--- Test 34: Rapid fire messages (20 messages) ---"
+echo "--- Test 33: Rapid fire messages (20 messages) ---"
 TOPIC_RAPID="data/test/rapid_$TEST_ID"
 COUNT_BEFORE=$(db_count)
 
@@ -883,10 +871,10 @@ fi
 log_section "Section 10: MQTT User Properties (Headers)"
 
 # -----------------------------------------
-# Test 35: Message with user properties stored as headers
+# Test 34: Message with user properties stored as headers
 # -----------------------------------------
 echo ""
-echo "--- Test 35: User properties stored as headers ---"
+echo "--- Test 34: User properties stored as headers ---"
 TOPIC_HEADERS="data/test/headers_$TEST_ID"
 # mosquitto_pub -D option adds user properties
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
@@ -905,10 +893,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 36: Message without user properties has null headers
+# Test 35: Message without user properties has null headers
 # -----------------------------------------
 echo ""
-echo "--- Test 36: Message without user properties ---"
+echo "--- Test 35: Message without user properties ---"
 TOPIC_NO_HEADERS="data/test/noheaders_$TEST_ID"
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
     -t "$TOPIC_NO_HEADERS" -m '{"test":"no headers"}' -q 1
@@ -924,10 +912,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 37: Excluded headers are not stored
+# Test 36: Excluded headers are not stored
 # -----------------------------------------
 echo ""
-echo "--- Test 37: Excluded headers are not stored ---"
+echo "--- Test 36: Excluded headers are not stored ---"
 TOPIC_EXCL_HEADERS="data/test/excl_headers_$TEST_ID"
 # Send message with both included and excluded headers
 # mosquitto.conf has: plugin_opt_exclude_headers header-to-exclude,another-header
@@ -953,10 +941,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 38: Multiple headers with same allowed name
+# Test 37: Multiple headers with same allowed name
 # -----------------------------------------
 echo ""
-echo "--- Test 38: Multiple headers stored correctly ---"
+echo "--- Test 37: Multiple headers stored correctly ---"
 TOPIC_MULTI_HEADERS="data/test/multi_headers_$TEST_ID"
 mosquitto_pub -h "$BROKER" -p "$PORT" -u "$USER" -P "$PASS" \
     -t "$TOPIC_MULTI_HEADERS" -m '{"test":"multi headers"}' -q 1 \
@@ -983,10 +971,10 @@ fi
 log_section "Section 11: Security and Authentication"
 
 # -----------------------------------------
-# Test 39: Invalid credentials rejected
+# Test 38: Invalid credentials rejected
 # -----------------------------------------
 echo ""
-echo "--- Test 39: Invalid credentials rejected ---"
+echo "--- Test 38: Invalid credentials rejected ---"
 TOPIC_INVALID="data/test/invalid_auth_$TEST_ID"
 
 # Try to publish with wrong password (should fail)
@@ -997,10 +985,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 40: Invalid username rejected
+# Test 39: Invalid username rejected
 # -----------------------------------------
 echo ""
-echo "--- Test 40: Invalid username rejected ---"
+echo "--- Test 39: Invalid username rejected ---"
 if mosquitto_pub -h "$BROKER" -p "$PORT" -u "nonexistent_user" -P "anypass" -t "$TOPIC_INVALID" -m '{"should":"fail"}' -q 1 2>/dev/null; then
     log_fail "Connection with invalid username should have been rejected"
 else
@@ -1008,10 +996,10 @@ else
 fi
 
 # -----------------------------------------
-# Test 41: No credentials rejected
+# Test 40: No credentials rejected
 # -----------------------------------------
 echo ""
-echo "--- Test 41: No credentials rejected ---"
+echo "--- Test 40: No credentials rejected ---"
 if mosquitto_pub -h "$BROKER" -p "$PORT" -t "$TOPIC_INVALID" -m '{"should":"fail"}' -q 1 2>/dev/null; then
     log_fail "Anonymous connection should have been rejected"
 else

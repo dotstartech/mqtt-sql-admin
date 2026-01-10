@@ -1,12 +1,13 @@
-# Docker Compose configuration (default, no Swarm required)
-# Usage: docker compose up -d
+# Docker Swarm configuration (for production deployments)
+# Usage:
+#   docker secret create mqbase.secrets mqbase.secrets
+#   docker stack deploy -c compose.swarm.yml mqbase
 #
-# Credentials can be provided via:
-#   1. Environment variables (shown below)
-#   2. Mounted secrets file (secrets.conf)
-#   3. Auto-generated (printed to logs on first run)
+# Credentials are provided via Docker Swarm secrets (most secure):
+#   - Create mqbase.secrets file with MQBASE_USER and MQBASE_MQTT_USER
+#   - Register as a Docker secret before deploying
 #
-# For Docker Swarm deployments, use compose.swarm.yml instead.
+# Features overlay networking for multi-node Swarm clusters.
 
 services:
   mqbase:
@@ -20,30 +21,37 @@ services:
       tags:
       - mqbase:${MQBASE_VERSION:-latest}
     hostname: mqbase
-    container_name: mqbase
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - mqbase-data:/mosquitto/data
       - mqbase-log:/mosquitto/log
       - ./mosquitto/config:/mosquitto/config
-      # Optional: mount secrets file instead of using environment variables
-      # - ./mqbase.secrets:/mosquitto/config/secrets.conf:ro
     ports:
       - 1883:1883   # MQTT
       - 8883:8883   # MQTT over TLS
       - 8000:8000   # libSQL HTTP
       - 8080:8080   # Admin UI (nginx)
       - 9001:9001   # MQTT over WebSocket
+    networks:
+      - proxy
     env_file:
       - mqbase.properties
-    environment:
-      # Credentials via environment variables (alternative to secrets file)
-      - MQBASE_USER=${MQBASE_USER:-admin:admin}
-      - MQBASE_MQTT_USER=${MQBASE_MQTT_USER:-admin:admin}
-    restart: unless-stopped
+    secrets:
+      - mqbase.secrets
+    restart: always
+
+secrets:
+  mqbase.secrets:
+    external: true
 
 volumes:
   mqbase-data:
     name: mqbase-data
   mqbase-log:
     name: mqbase-log
+
+networks:
+  proxy:
+    driver: overlay
+    name: proxy
+    attachable: true

@@ -1,7 +1,117 @@
 #!/bin/bash
 set -e
 
-# Set permissions
+# =============================================================================
+# Credential Loading Functions
+# =============================================================================
+# Multi-source credential loading with fallback priority:
+#   1. Docker secrets file (/run/secrets/mqbase.secrets)
+#   2. Environment variables (MQBASE_USER, MQBASE_MQTT_USER)
+#   3. Mounted config file (/mosquitto/config/secrets.conf)
+#   4. Auto-generate random credentials (with warning)
+# =============================================================================
+
+# Generate a random password (16 alphanumeric characters)
+generate_password() {
+	tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16
+}
+
+# Load credentials from a secrets file (key=value format)
+# Usage: load_from_file <filepath>
+# Sets: MQBASE_USER, MQBASE_MQTT_USER (if found and not already set)
+load_from_file() {
+	local file="$1"
+	if [ -f "$file" ]; then
+		# Only set if not already defined
+		if [ -z "$MQBASE_USER" ]; then
+			MQBASE_USER=$(grep "^MQBASE_USER=" "$file" 2>/dev/null | cut -d'=' -f2-)
+		fi
+		if [ -z "$MQBASE_MQTT_USER" ]; then
+			MQBASE_MQTT_USER=$(grep "^MQBASE_MQTT_USER=" "$file" 2>/dev/null | cut -d'=' -f2-)
+		fi
+		return 0
+	fi
+	return 1
+}
+
+# Load credentials with fallback priority
+load_credentials() {
+	local source=""
+	
+	# Priority 1: Docker secrets file (Swarm/Compose secrets)
+	if [ -f /run/secrets/mqbase.secrets ]; then
+		load_from_file /run/secrets/mqbase.secrets
+		source="Docker secrets (/run/secrets/mqbase.secrets)"
+	fi
+	
+	# Priority 2: Environment variables (already in env, check if set)
+	# These are already available if passed via docker run -e or compose environment:
+	# Nothing to do here - just note the source if values are set
+	if [ -n "$MQBASE_USER" ] || [ -n "$MQBASE_MQTT_USER" ]; then
+		if [ -z "$source" ]; then
+			source="environment variables"
+		fi
+	fi
+	
+	# Priority 3: Mounted config file
+	if [ -z "$MQBASE_USER" ] || [ -z "$MQBASE_MQTT_USER" ]; then
+		if [ -f /mosquitto/config/secrets.conf ]; then
+			load_from_file /mosquitto/config/secrets.conf
+			if [ -n "$MQBASE_USER" ] || [ -n "$MQBASE_MQTT_USER" ]; then
+				source="${source:+$source + }mounted config (/mosquitto/config/secrets.conf)"
+			fi
+		fi
+	fi
+	
+	# Priority 4: Auto-generate if still missing
+	if [ -z "$MQBASE_USER" ]; then
+		local gen_pass=$(generate_password)
+		MQBASE_USER="admin:${gen_pass}"
+		echo "=============================================="
+		echo "WARNING: No MQBASE_USER credentials found!"
+		echo "Auto-generated credentials for HTTP Basic Auth:"
+		echo "  Username: admin"
+		echo "  Password: ${gen_pass}"
+		echo "=============================================="
+		source="${source:+$source + }auto-generated (MQBASE_USER)"
+	fi
+	
+	if [ -z "$MQBASE_MQTT_USER" ]; then
+		local gen_pass=$(generate_password)
+		MQBASE_MQTT_USER="admin:${gen_pass}"
+		echo "=============================================="
+		echo "WARNING: No MQBASE_MQTT_USER credentials found!"
+		echo "Auto-generated credentials for MQTT:"
+		echo "  Username: admin"
+		echo "  Password: ${gen_pass}"
+		echo "=============================================="
+		source="${source:+$source + }auto-generated (MQBASE_MQTT_USER)"
+	fi
+	
+	echo "Credentials loaded from: $source"
+}
+
+# Create credential files for nginx and web UI
+setup_credential_files() {
+	# Parse MQBASE_MQTT_USER (format: username:password) for web client JSON
+	local mqtt_username=$(echo "$MQBASE_MQTT_USER" | cut -d':' -f1)
+	local mqtt_password=$(echo "$MQBASE_MQTT_USER" | cut -d':' -f2-)
+	echo "{\"username\":\"$mqtt_username\",\"password\":\"$mqtt_password\"}" > /tmp/mqtt-credentials.json
+	chown admin:admin /tmp/mqtt-credentials.json
+	chmod 644 /tmp/mqtt-credentials.json
+	
+	# Parse MQBASE_USER (format: username:password) for HTTP Basic Auth htpasswd
+	local db_username=$(echo "$MQBASE_USER" | cut -d':' -f1)
+	local db_password=$(echo "$MQBASE_USER" | cut -d':' -f2-)
+	echo "$db_username:$(echo -n "$db_password" | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
+	chown admin:admin /tmp/htpasswd
+	chmod 644 /tmp/htpasswd
+}
+
+# =============================================================================
+# Main Entrypoint
+# =============================================================================
+
 user="$(id -u)"
 if [ "$user" = '0' ]; then
 	# Ensure mosquitto directories exist
@@ -18,42 +128,11 @@ if [ "$user" = '0' ]; then
 	chown -R admin:admin /tmp/nginx_* /var/log/nginx
 	chmod -R 755 /tmp/nginx_* /var/log/nginx
 	
-	# Parse MQTT credentials from secrets file and create JSON for web client
-	if [ -f /run/secrets/mqbase.secrets ]; then
-		# Extract MQBASE_MQTT_USER value (format: username:password)
-		mqtt_user=$(grep "^MQBASE_MQTT_USER=" /run/secrets/mqbase.secrets | cut -d'=' -f2)
-		if [ -n "$mqtt_user" ]; then
-			# Split into username and password
-			username=$(echo "$mqtt_user" | cut -d':' -f1)
-			password=$(echo "$mqtt_user" | cut -d':' -f2)
-			# Create JSON file
-			echo "{\"username\":\"$username\",\"password\":\"$password\"}" > /tmp/mqtt-credentials.json
-			chown admin:admin /tmp/mqtt-credentials.json
-			chmod 644 /tmp/mqtt-credentials.json
-		fi
-		
-		# Extract MQBASE_USER value (format: username:password) for HTTP Basic Auth
-		db_user=$(grep "^MQBASE_USER=" /run/secrets/mqbase.secrets | cut -d'=' -f2)
-		if [ -n "$db_user" ]; then
-			db_username=$(echo "$db_user" | cut -d':' -f1)
-			db_password=$(echo "$db_user" | cut -d':' -f2)
-			# Generate htpasswd using openssl
-			echo "$db_username:$(echo -n "$db_password" | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
-			chown admin:admin /tmp/htpasswd
-			chmod 644 /tmp/htpasswd
-		else
-			echo "WARNING: MQBASE_USER not set in mqbase.secrets, using default 'admin:admin'"
-			echo "admin:$(echo -n 'admin' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
-			chown admin:admin /tmp/htpasswd
-			chmod 644 /tmp/htpasswd
-		fi
-	else
-		# Create default credentials if no secrets file
-		echo "WARNING: mqbase.secrets not found, using default credentials"
-		echo "admin:$(echo -n 'admin' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
-		chown admin:admin /tmp/htpasswd
-		chmod 644 /tmp/htpasswd
-	fi
+	# Load credentials from multiple sources with fallback
+	load_credentials
+	
+	# Create credential files for nginx and web UI
+	setup_credential_files
 	
 	# Create app config JSON from environment variables
 	# These come from mqbase.properties via env_file in compose.yml

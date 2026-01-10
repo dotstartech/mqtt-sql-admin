@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build Docker image for mqtt-sql-admin
-# Tags the image with both the version from msa.properties and 'latest'
+# Build Docker image for mqbase
+# Tags the image with both the version from mqbase.properties and 'latest'
 # Usage: ./build.sh [--no-cache] [--release]
 #   --no-cache  Build without using Docker cache
 #   --release   Minify app.js for production build
@@ -25,20 +25,20 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Read version from msa.properties
-PROPERTIES_FILE="$PROJECT_DIR/msa.properties"
+# Read version from mqbase.properties
+PROPERTIES_FILE="$PROJECT_DIR/mqbase.properties"
 if [[ ! -f "$PROPERTIES_FILE" ]]; then
-    echo "Error: msa.properties not found at $PROPERTIES_FILE"
+    echo "Error: mqbase.properties not found at $PROPERTIES_FILE"
     exit 1
 fi
 
 VERSION=$(grep -E "^version=" "$PROPERTIES_FILE" | cut -d'=' -f2 | tr -d '[:space:]')
 if [[ -z "$VERSION" ]]; then
-    echo "Error: version not found in msa.properties"
+    echo "Error: version not found in mqbase.properties"
     exit 1
 fi
 
-IMAGE_NAME="mqtt-sql-admin"
+IMAGE_NAME="mqbase"
 
 echo "Building $IMAGE_NAME version $VERSION..."
 if [[ -n "$NO_CACHE" ]]; then

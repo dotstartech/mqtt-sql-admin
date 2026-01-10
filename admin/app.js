@@ -199,13 +199,13 @@ function getCookie(name) {
 // Database Tab Functions
 // =============================================================================
 
-// MSA authentication credentials (stored in memory for session)
-let msaCredentials = null;
+// mqBase authentication credentials (stored in memory for session)
+let mqbaseCredentials = null;
 let loginModalOpen = false;
 
 function getDbAuthHeader() {
-    if (msaCredentials) {
-        return 'Basic ' + btoa(msaCredentials.username + ':' + msaCredentials.password);
+    if (mqbaseCredentials) {
+        return 'Basic ' + btoa(mqbaseCredentials.username + ':' + mqbaseCredentials.password);
     }
     return null;
 }
@@ -267,7 +267,7 @@ async function handleLogin(event) {
         }
         
         // Credentials are valid - store them
-        msaCredentials = { username, password };
+        mqbaseCredentials = { username, password };
         closeLoginModal();
         updateAuthMenuItem();
         
@@ -302,7 +302,7 @@ async function handleLogin(event) {
 function updateAuthMenuItem() {
     const menuItem = document.getElementById('authMenuItem');
     const authButton = document.getElementById('authButton');
-    const label = msaCredentials ? 'Logout' : 'Login';
+    const label = mqbaseCredentials ? 'Logout' : 'Login';
     
     if (menuItem) {
         menuItem.textContent = label;
@@ -317,7 +317,7 @@ function updateAuthMenuItem() {
 function handleAuthMenuClick() {
     toggleSettingsMenu();
     
-    if (msaCredentials) {
+    if (mqbaseCredentials) {
         performLogout();
     } else {
         showLoginModal();
@@ -326,7 +326,7 @@ function handleAuthMenuClick() {
 
 // Handle Login/Logout button click (same as menu but no menu toggle)
 function handleAuthButtonClick() {
-    if (msaCredentials) {
+    if (mqbaseCredentials) {
         performLogout();
     } else {
         showLoginModal();
@@ -335,7 +335,7 @@ function handleAuthButtonClick() {
 
 // Perform logout - clear credentials and data
 function performLogout() {
-    msaCredentials = null;
+    mqbaseCredentials = null;
     loginModalOpen = false;
     updateAuthMenuItem();
     
@@ -484,7 +484,7 @@ async function loadMessages() {
 
 async function executeCustomQuery() {
     // Check if user is logged in
-    if (!msaCredentials) {
+    if (!mqbaseCredentials) {
         showLoginModal();
         return;
     }
@@ -719,7 +719,7 @@ function switchTab(tabName) {
     }
 
     // Auto-connect MQTT if switching to Broker or ACL tab (only if logged in)
-    if ((tabName === 'broker' || tabName === 'acl') && !window.mqttConnected && msaCredentials) {
+    if ((tabName === 'broker' || tabName === 'acl') && !window.mqttConnected && mqbaseCredentials) {
         setTimeout(() => {
             initMqttConnection();
             window.mqttConnected = true;
@@ -783,7 +783,7 @@ async function loadBrokerConfig() {
         window.availableRoles = config.roles || [];
         
         // Ensure MQTT is connected when ACL data loads successfully
-        if (!window.mqttConnected && msaCredentials) {
+        if (!window.mqttConnected && mqbaseCredentials) {
             initMqttConnection();
             window.mqttConnected = true;
         }
@@ -1424,7 +1424,7 @@ async function initMqttConnection() {
         }
         
         mqttClient = mqtt.connect(wsUrl, {
-            clientId: 'msa-admin-' + Math.random().toString(16).substr(2, 8),
+            clientId: 'mqbase-admin-' + Math.random().toString(16).substr(2, 8),
             username: username,
             password: password,
             clean: true,
@@ -1557,7 +1557,7 @@ function updateMqttStatus(text, icon, color) {
 // Publish a message to the MQTT broker
 function publishMessage() {
     // Check if user is logged in
-    if (!msaCredentials) {
+    if (!mqbaseCredentials) {
         showLoginModal();
         return;
     }
@@ -1652,7 +1652,7 @@ function displayMqttMessages() {
     }
     
     // Show login required message if not authenticated
-    if (!msaCredentials) {
+    if (!mqbaseCredentials) {
         //tbody.innerHTML = '<tr><td colspan="6" class="login-required">Please log in to view data</td></tr>';
         tbody.innerHTML = '<tr><td colspan="6" class="login-required"></td></tr>';
         return;
@@ -2037,7 +2037,7 @@ function closeConfirmOnOverlay(event) {
 // Initialization
 // =============================================================================
 
-// Load app configuration (title, logo) from msa.properties
+// Load app configuration (title, logo) from mqbase.properties
 async function loadAppConfig() {
     try {
         const response = await fetch('/app-config');

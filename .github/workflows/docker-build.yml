@@ -15,7 +15,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: dotstartech/mqtt-sql-admin
+  IMAGE_NAME: dotstartech/mqbase
 
 jobs:
   build-and-push:

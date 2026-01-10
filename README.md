@@ -1,6 +1,6 @@
-# MQTT SQL Admin
+# mqBase - MQTT, SQL and web admin in one place
 
-MQTT SQL Admin is based on [Mosquitto](https://github.com/eclipse-mosquitto/mosquitto) MQTT broker, [libSQL](https://github.com/tursodatabase/libsql) database and [Nginx](https://github.com/nginx/nginx) web server. It features:
+mqBase is based on [Mosquitto](https://github.com/eclipse-mosquitto/mosquitto) MQTT broker, [libSQL](https://github.com/tursodatabase/libsql) database and [Nginx](https://github.com/nginx/nginx) web server. It features:
  - MQTT v5.0 protocol (plain MQTT, over TLS or WebSocket)
  - Authentication and authorization based on Access Control List (ACL)
  - Message persistency in local libSQL database with remote HTTP access
@@ -9,31 +9,33 @@ MQTT SQL Admin is based on [Mosquitto](https://github.com/eclipse-mosquitto/mosq
 ## Development
 To build Docker image run from the project's root directory
 ```bash
-docker build --no-cache --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t mqtt-sql-admin:0.1.0 -f ./docker/Dockerfile .
+docker build --no-cache --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t mqbase:latest -f ./docker/Dockerfile .
 ```
 
-To start the MQTT SQL Admin as Docker Swarm service
-```bash
-docker network create --driver overlay proxy
-docker secret create msa.secrets msa.secrets
-docker stack deploy -c compose.yml msa
+The `mqbase.secrets` file contains environment variables for the admin UI and the MQTT broker:
 ```
-
-The `msa.secrets` file contains environment variables for the admin UI and the MQTT broker:
-```
-MSA_USER=admin:admin
-MSA_MQTT_USER=admin:admin
+MQBASE_USER=admin:admin
+MQBASE_MQTT_USER=admin:admin
 ```
 
 | Variable | Description |
 |----------|-------------|
-| `MSA_USER` | MSA admin credentials in `username:password` format (for HTTP Basic Auth) |
-| `MSA_MQTT_USER` | MQTT broker credentials in `username:password` format (for admin UI to connect to broker) |
+| `MQBASE_USER` | mqBase admin credentials in `username:password` format (for HTTP Basic Auth) |
+| `MQBASE_MQTT_USER` | MQTT broker credentials in `username:password` format (for admin UI to connect to broker) |
 
-The `msa.properties` file contains application configuration:
+To start mqBase as Docker Swarm service
+```bash
+docker network create --driver overlay proxy
+docker secret create mqbase.secrets mqbase.secrets
+docker stack deploy -c compose.yml mqbase
+```
+
+Open [localhost:8080/msg-admin](localhost:8080/msg-admin) or [127.0.0.1:8080/msg-admin](127.0.0.1:8080/msg-admin) in your browser
+
+The `mqbase.properties` file contains application configuration:
 ```properties
 version=0.2.0
-title=MQTT SQL Admin
+title=mqBase
 logo=admin/logo.png
 favicon=admin/logo.png
 ```
@@ -41,7 +43,7 @@ favicon=admin/logo.png
 | Property | Description |
 |----------|-------------|
 | `version` | Application version (used by build/deploy scripts) |
-| `title` | Title displayed in the web UI header (default: "MQTT SQL Admin") |
+| `title` | Title displayed in the web UI header (default: "mqBase") |
 | `logo` | Path to logo image displayed in the header (optional, no logo if empty) |
 | `favicon` | Path to favicon displayed in the browser tab (optional, no icon if empty) |
 

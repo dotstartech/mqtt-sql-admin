@@ -74,7 +74,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/ncopa/su-exec/master/su-exec.c 
 FROM debian:trixie-slim
 
 LABEL maintainer="dotStar Technologies" \
-      description="MQTT SQL Admin - Mosquitto MQTT Broker with libSQL Persistency and Web Admin Interface"
+      description="mqBase - Mosquitto MQTT Broker with libSQL Persistency and Web Admin Interface"
 
 # Build arguments for user/group IDs
 ARG UID=1883

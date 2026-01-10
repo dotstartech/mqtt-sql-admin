@@ -76,17 +76,6 @@ When enabled, the following debug messages are logged:
 | `Enqueued fallback delete: topic=<topic>` | Delete without specific ULID |
 | `Enqueued: topic=<topic> retain=<0/1> qos=<0/1/2> headers=<headers>` | Message queued for insert |
 
-### Viewing Logs
-
-Debug logs appear in the Mosquitto broker logs:
-
-```bash
-# Docker Swarm
-docker service logs msa_mqtt-sql-admin -f
-
-# Docker container
-docker logs -f <container_id>
-```
 
 ## Configuration Options
 

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Deploy mqtt-sql-admin to Docker Swarm
-# Reads version from msa.properties and deploys with that tag
+# Deploy mqbase to Docker Swarm
+# Reads version from mqbase.properties and deploys with that tag
 
 set -e
 
@@ -8,25 +8,25 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Read version from msa.properties
-PROPERTIES_FILE="$PROJECT_DIR/msa.properties"
+# Read version from mqbase.properties
+PROPERTIES_FILE="$PROJECT_DIR/mqbase.properties"
 if [[ ! -f "$PROPERTIES_FILE" ]]; then
-    echo "Error: msa.properties not found at $PROPERTIES_FILE"
+    echo "Error: mqbase.properties not found at $PROPERTIES_FILE"
     exit 1
 fi
 
 VERSION=$(grep -E "^version=" "$PROPERTIES_FILE" | cut -d'=' -f2 | tr -d '[:space:]')
 if [[ -z "$VERSION" ]]; then
-    echo "Error: version not found in msa.properties"
+    echo "Error: version not found in mqbase.properties"
     exit 1
 fi
 
-export MSA_VERSION="$VERSION"
+export MQBASE_VERSION="$VERSION"
 
-echo "Deploying mqtt-sql-admin version $MSA_VERSION..."
+echo "Deploying mqbase version $MQBASE_VERSION..."
 
 cd "$PROJECT_DIR"
-docker stack deploy -c compose.yml msa
+docker stack deploy -c compose.yml mqbase
 
 echo ""
-echo "Deployed mqtt-sql-admin:$MSA_VERSION"
+echo "Deployed mqbase:$MQBASE_VERSION"

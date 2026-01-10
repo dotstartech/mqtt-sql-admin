@@ -1,13 +1,30 @@
 # DEV Scripts and Configs
 
+## Prerequisites
+
+The test scripts require the following tools to be installed:
+
+| Tool | Required For | Install Command |
+|------|--------------|-----------------|
+| `mosquitto_pub` / `mosquitto_sub` | MQTT (TCP) tests | `apt install mosquitto-clients` |
+| `mqtt` (MQTT.js CLI) | WebSocket tests | `npm install -g mqtt` |
+| `curl` | HTTP/DB queries | Usually pre-installed |
+| `jq` | JSON parsing | `apt install jq` |
+
+**Note:** `mosquitto_pub` speaks raw MQTT over TCP and cannot be used for WebSocket testing. MQTT over WebSocket requires an HTTP upgrade handshake and WebSocket framing, which only WebSocket-capable clients like MQTT.js can perform.
+
+The test script will automatically detect which tools are available and skip tests if the required tool is missing.
+
+---
+
 ## Build, Test and Deploy Scripts
 
 ```bash
-# Builds the Docker image with version tag from msa.properties
+# Builds the Docker image with version tag from mqbase.properties
 ./dev/build.sh
 # Deploys the service to Docker Swarm
 ./dev/deploy.sh
-# Runs integration tests to verify MQTT persistence, topics exclusion, etc.
+# Runs integration tests (MQTT/TCP and WebSocket)
 ./dev/test.sh
 ```
 

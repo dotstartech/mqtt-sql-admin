@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stress test script for mqtt-sql-admin
+# Stress test script for mqbase
 # Fires high volume of MQTT messages and measures throughput
 # Requirements: mosquitto_pub, curl, jq, bc
 
@@ -229,7 +229,7 @@ TEST_ID=$(date +%s)_stress
 TARGET_RATE=$((TOTAL_MESSAGES / DURATION))
 
 echo "========================================"
-echo "MQTT-SQL-Admin Stress Test"
+echo "mqBase Stress Test"
 echo "========================================"
 echo "Broker: $BROKER:$PORT"
 echo "User: $USER"

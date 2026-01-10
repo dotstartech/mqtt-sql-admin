@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MQTT SQL Admin</title>
+    <title>mqBase</title>
     <link id="favicon" rel="icon" type="image/png" href="">
     <link rel="stylesheet" href="/admin/styles.css">
     <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
@@ -13,7 +13,7 @@
     <div class="container">
         <header>
             <img id="headerLogo" class="header-logo" src="" alt="Logo" style="display: none;">
-            <h1 id="headerTitle">MQTT SQL Admin</h1>
+            <h1 id="headerTitle">mqBase</h1>
             <div class="settings-wrapper">
                 <button id="authButton" class="auth-btn" onclick="handleAuthButtonClick()" title="Login">Login</button>
                 <button class="settings-btn" onclick="toggleSettingsMenu()" title="Settings">☰</button>
@@ -108,7 +108,7 @@
                     <button class="modal-close" onclick="closeAboutModal()">✕</button>
                 </div>
                 <div class="modal-body about-body">
-                    <h2 class="about-title">MQTT SQL Admin</h2>
+                    <h2 class="about-title">mqBase</h2>
                     <div class="about-info">
                         <p>A web-based admin interface for MQTT message persistence with libSQL</p>
                     </div>
@@ -116,7 +116,7 @@
                     <div class="about-separator"></div>
                     <div class="about-row">
                         <span class="about-label">GitHub:</span>
-                        <a href="https://github.com/dotstartech/mqtt-sql-admin" target="_blank" class="about-link">github.com/dotstartech/mqtt-sql-admin</a>
+                        <a href="https://github.com/dotstartech/mqbase" target="_blank" class="about-link">github.com/dotstartech/mqbase</a>
                     </div>
                     <div class="about-row">
                         <span class="about-label">License:</span>

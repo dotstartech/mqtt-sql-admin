@@ -19,9 +19,9 @@ if [ "$user" = '0' ]; then
 	chmod -R 755 /tmp/nginx_* /var/log/nginx
 	
 	# Parse MQTT credentials from secrets file and create JSON for web client
-	if [ -f /run/secrets/msa.secrets ]; then
-		# Extract MSA_MQTT_USER value (format: username:password)
-		mqtt_user=$(grep "^MSA_MQTT_USER=" /run/secrets/msa.secrets | cut -d'=' -f2)
+	if [ -f /run/secrets/mqbase.secrets ]; then
+		# Extract MQBASE_MQTT_USER value (format: username:password)
+		mqtt_user=$(grep "^MQBASE_MQTT_USER=" /run/secrets/mqbase.secrets | cut -d'=' -f2)
 		if [ -n "$mqtt_user" ]; then
 			# Split into username and password
 			username=$(echo "$mqtt_user" | cut -d':' -f1)
@@ -32,8 +32,8 @@ if [ "$user" = '0' ]; then
 			chmod 644 /tmp/mqtt-credentials.json
 		fi
 		
-		# Extract MSA_USER value (format: username:password) for HTTP Basic Auth
-		db_user=$(grep "^MSA_USER=" /run/secrets/msa.secrets | cut -d'=' -f2)
+		# Extract MQBASE_USER value (format: username:password) for HTTP Basic Auth
+		db_user=$(grep "^MQBASE_USER=" /run/secrets/mqbase.secrets | cut -d'=' -f2)
 		if [ -n "$db_user" ]; then
 			db_username=$(echo "$db_user" | cut -d':' -f1)
 			db_password=$(echo "$db_user" | cut -d':' -f2)
@@ -42,21 +42,21 @@ if [ "$user" = '0' ]; then
 			chown admin:admin /tmp/htpasswd
 			chmod 644 /tmp/htpasswd
 		else
-			echo "WARNING: MSA_USER not set in msa.secrets, using default 'admin:admin'"
+			echo "WARNING: MQBASE_USER not set in mqbase.secrets, using default 'admin:admin'"
 			echo "admin:$(echo -n 'admin' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
 			chown admin:admin /tmp/htpasswd
 			chmod 644 /tmp/htpasswd
 		fi
 	else
 		# Create default credentials if no secrets file
-		echo "WARNING: msa.secrets not found, using default credentials"
+		echo "WARNING: mqbase.secrets not found, using default credentials"
 		echo "admin:$(echo -n 'admin' | openssl passwd -apr1 -stdin)" > /tmp/htpasswd
 		chown admin:admin /tmp/htpasswd
 		chmod 644 /tmp/htpasswd
 	fi
 	
 	# Create app config JSON from environment variables
-	# These come from msa.properties via env_file in compose.yml
+	# These come from mqbase.properties via env_file in compose.yml
 	app_version="${version:-}"
 	app_title="${title:-}"
 	app_logo="${logo:-}"

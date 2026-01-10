@@ -1,6 +1,6 @@
 services:
-  mqtt-sql-admin:
-    image: mqtt-sql-admin:${MSA_VERSION:-latest}
+  mqbase:
+    image: mqbase:${MQBASE_VERSION:-latest}
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -8,12 +8,12 @@ services:
         UID: ${USER_ID:-1000}
         GID: ${GROUP_ID:-1000}
       tags:
-      - mqtt-sql-admin:${MSA_VERSION:-latest}
-    hostname: mqtt-sql-admin
+      - mqbase:${MQBASE_VERSION:-latest}
+    hostname: mqbase
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - msa-data:/mosquitto/data
-      - msa-log:/mosquitto/log
+      - mqbase-data:/mosquitto/data
+      - mqbase-log:/mosquitto/log
       - ./mosquitto/config:/mosquitto/config
     ports:
       - 1883:1883
@@ -24,23 +24,24 @@ services:
     networks:
       - proxy
     env_file:
-      - msa.properties
+      - mqbase.properties
     secrets:
-      - msa.secrets
+      - mqbase.secrets
     restart: always
 
 secrets:
-  msa.secrets:
+  mqbase.secrets:
     external: true
 
 volumes:
-  msa-data:
-    name: msa-data
-  msa-log:
-    name: msa-log
+  mqbase-data:
+    name: mqbase-data
+  mqbase-log:
+    name: mqbase-log
 
 networks:
   proxy:
     driver: overlay
     name: proxy
     attachable: true
+    external: true

@@ -1022,11 +1022,13 @@ td.actions {
     background: transparent;
     border: none;
     color: var(--ctp-subtext0);
-    font-size: 20px;
+    font-size: 22px;
     cursor: pointer;
     padding: 4px 10px 8px 10px;
     border-radius: 2px;
     transition: background 0.2s, color 0.2s, transform 0.2s;
+    position: relative;
+    top: 2px;
 }
 
 .settings-btn:hover {
